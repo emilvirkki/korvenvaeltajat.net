@@ -1,0 +1,1390 @@
+<?php
+//$Id$
+
+/**
+ * Vocabulary id of the image gallery vocabulary
+ */
+define('LPK_GALLERY_VID', 3);
+
+/**
+ * Number of images to display on the add images form
+ */
+define('LPK_GALLERY_NUM_FORM_IMAGES', 5);
+
+/**
+ * A string containing the extensions of files that can be added to the gallery.
+ */
+define('LPK_GALLERY_ALLOWED_EXTENSIONS', 'jpg jpeg png');
+
+/**
+ * Length of the longer side of the image to scale down to.
+ */
+define('LPK_GALLERY_SCALE_LONGER_SIDE', 800);
+
+/**
+ * Type of gallery: can contain images only. When used with _gallery_can_add() this
+ * can be used to check if images can be added to the gallery.
+ */
+define('LPK_GALLERY_IMAGES', 0);
+
+
+/**
+ * Type of gallery: can contain galleries only. When used with _gallery_can_add() this
+ * can be used to check if galleries can be added to the gallery.
+ */
+define('LPK_GALLERY_GALLERIES', 1);
+
+/**
+ * Type of gallery: can contain images and galleries. This cannot be used with
+ * _gallery_can_add()
+ */
+define('LPK_GALLERY_IMAGES_AND_GALLERIES', 2);
+
+/**
+ * Implements hook_cron(). Creates a new gallery for the current year if one does not exist.
+ */
+function lpk_gallery_cron() {
+  if(!taxonomy_get_term_by_name(date('Y'))) {
+    $gallery = lpk_gallery_create_gallery();
+    $gallery->name = date('Y');
+    $gallery->uid = 1;
+    
+    //Prevent adding images directly
+    $gallery->field_allowed_content['und'][0]['value'] = LPK_GALLERY_GALLERIES;
+    
+    $success = taxonomy_term_save($gallery);
+    
+    if($success) {
+      watchdog("gallery", 'Automatically created new gallery "' . date('Y') . '"');
+    } else {
+      watchdog("gallery", 'Automatic gallery creation for "' . date('Y') . '" failed', WATCHDOG_ERROR);
+    }
+  }
+}
+
+/**
+ * Implements hook_permission(). Contains permissions for
+ * acessing the gallery admin page and creating, updating and deleting galleries.
+ */
+function lpk_gallery_permission() {
+  $perms = array();
+  
+  $perms['access gallery admin page'] = array(
+    'title' => t('Access image gallery administration pages'),
+  );
+  
+  $perms['create new galleries'] = array(
+    'title' => t('Create new image galleries'),
+  );
+  
+  $perms['edit galleries'] = array(
+    'title' => t('Edit image galleries'),
+  );
+  
+  $perms['edit own galleries'] = array(
+    'title' => t('Edit own image galleries'),
+  );
+  
+  $perms['delete galleries'] = array(
+    'title' => t('Delete image galleries'),
+  );
+  
+  $perms['delete own galleries'] = array(
+    'title' => t('Delete own image galleries'),
+  );
+  
+  return $perms;
+}
+
+/**
+ * Implements hook_menu(). Adds public gallery page,
+ * admin page, add, edit and add images forms and deletion page.
+ */
+function lpk_gallery_menu() {
+
+  $items = array();
+  $items['galleria'] = array(
+    'title' => 'Kuvia',
+    'page callback' => 'lpk_gallery_page',
+    'access callback' => TRUE,
+    'description' => 'Kuvia lippukunnan toiminnasta',
+  );
+  
+  $items['johtajat/galleria'] = array(
+    'title' => 'Kuvagalleriat',
+    'page callback' => 'lpk_gallery_admin_page',
+    'access arguments' => array('access gallery admin page'),
+  );
+  
+  $items['johtajat/galleria/uusi'] = array(
+    'title' => 'Luo uusi galleria',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('lpk_gallery_gallery_form', 0, 3),
+    'access arguments' => array('create new galleries'),
+  );
+  
+  $items['johtajat/galleria/%/muokkaa'] = array(
+    'title' => 'Muokkaa galleriaa',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('lpk_gallery_gallery_form', 2),
+    'access arguments' => array('edit galleries', 'edit own galleries', 2),
+    'access callback' => '_lpk_gallery_access',
+  );
+  
+  $items['johtajat/galleria/%/poista'] = array(
+    'title' => 'Poista galleria',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('lpk_gallery_gallery_delete_form', 2),
+    'access arguments' => array('delete galleries', 'delete own galleries', 2),
+    'access callback' => '_lpk_gallery_access',
+  );
+  
+  $items['johtajat/galleria/%/lisaa-kuvia'] = array(
+    'title' => 'Lisää kuvia',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('lpk_gallery_add_images', 2),
+    'access arguments' => array('create gallery_image content'),
+  );
+  
+  return $items;
+  
+}
+
+function lpk_gallery_block_info() {
+  $blocks = array();
+  
+  $blocks['latest-galleries'] = array(
+    'info' => 'Viimeisimmät galleriat',
+    'cache' => DRUPAL_NO_CACHE
+  );
+  
+  return $blocks;
+}
+
+/**
+ * Implements hook_block_view().
+ */
+function lpk_gallery_block_view() {
+  $subject = 'Uusimmat galleriat';
+  
+  $galleries = lpk_gallery_get_latest_galleries(5);
+  
+  $content = '<ol>';
+  
+  foreach ($galleries as $gallery) {
+    $path = 'galleria/' . $gallery['gallery']->tid;
+    
+    $content .= "<li>";
+    $content .= '<h3>' . l($gallery['gallery']->name, $path) . '</h3>';
+    $content .= l(lpk_gallery_get_image_html($gallery['image'], 'small_square'), $path, array('html' => TRUE));
+    $content .= '<div class="added">Lisätty ' . date('d.m.Y', $gallery['gallery']->field_created['und'][0]['value']) . '</div>';
+    $content .= '<div class="imgcount">' . lpk_plural(intval($gallery['numimages']), 'kuva', 'kuvaa')  .'</div>';
+    $content .= "</li>\n";
+  }
+
+  $content .= '</ol>';
+  
+  return array(
+    'subject' => $subject,
+    'content' => $content
+  );
+}
+
+/**
+ * Implements hook_node_view(). Adds a gallery image node's parent galleries
+ * to the breadcrumb.
+ */
+function lpk_gallery_node_view($node, $view_mode, $langcode) { 
+  
+  //If we're viewing an image node as a standalone page, set the breadcrumb
+  if($node->type == 'gallery_image' && $view_mode == 'full') {
+    $tid = $node->field_gallery['fi'][0]['tid'];
+    lpk_gallery_append_parents($tid);
+    $term = taxonomy_term_load($tid);
+    lpk_append_breadcrumb(l($term->name, 'galleria/' . $term->tid));
+  }
+  
+  return $node;
+}
+
+/**
+ * Implements hook_form_FORM_ID_alter().Alters the gallery's
+ * own add/edit form to hide the useless format selection.
+ * @param $form the FAPI form array
+ * @param $form the FAPI form_state values
+ * @param $form_id the form id, in this case lpk_gallery_gallery_form.
+ */
+function lpk_gallery_form_lpk_gallery_gallery_form_alter(&$form, &$form_state, $form_id) {
+  lpk_hide_format_selection($form['description']);
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+//                                                                            //
+// Forms & pages                                                              //
+//                                                                            //
+////////////////////////////////////////////////////////////////////////////////
+
+/**
+ * The gallery page menu callback, displaying a list of galleries or images.
+ * @return the page HTML
+ */
+function lpk_gallery_page($parent = 0) {
+  $output = '';
+  
+  $parent_term = taxonomy_term_load($parent);
+    
+  if($parent_term) {
+    
+    //Add name and description
+    drupal_set_title($parent_term->name);
+    $output .= check_markup($parent_term->description, $parent_term->format);
+    
+    //Add galleries to breadcrumb
+    
+    lpk_append_breadcrumb(l('Kuvia', 'galleria'));
+    
+    //Add parent terms as well
+    $parentid = $parent_term->tid;
+    lpk_gallery_append_parents($parentid);
+    
+  }
+  
+  //Get the galleries, if there are any
+  
+  $galleries = taxonomy_get_tree(LPK_GALLERY_VID, $parent, 1, TRUE);
+  
+  //Remove empty galleries
+  foreach($galleries as $key=>$gallery) {
+    if(lpk_gallery_is_empty($gallery)) {
+      unset($galleries[$key]);
+    }
+  }
+  
+  //Order by date
+  $galleries = _lpk_gallery_date_sort($galleries);
+  
+  if(count($galleries) > 0) {
+    $output .= '<ul class="lpk-gallery-galleries">';
+    foreach($galleries as $gallery) {
+      $output .= _lpk_gallery_gallery_item($gallery);
+    }
+    $output .= '</ul>';
+  }
+  
+  //Get the images, if there are any
+  
+  $images = array();
+  if($parent != 0) {
+    $images = lpk_gallery_get_image_nodes($parent);
+  }
+  
+  //Remove inaccessible images
+  foreach($images as $key=>$image) {
+    if(!node_access('view', $image)) {
+      unset($images[$key]);
+    }
+  }
+  
+  if(count($images) > 0) {
+    $output .= '<ul class="lpk-gallery-images">';
+    foreach($images as $key=>$image) {
+      $output .= _lpk_gallery_image_item($image);
+    }
+    $output .= '</ul>';
+  }
+  
+  
+  if(count($galleries) == 0 && count($images) == 0) {
+    $output .= '<div class="empty">Tässä galleriassa ei ole kuvia eikä gallerioita.</div>';
+  }
+  
+  return $output;
+}
+
+/**
+ * Gallery admin page menu callback, displaying gallery and image list.
+ * @param $parent_id the possible id of the gallery for which to display subgalleries and images.
+ * @return the page HTML
+ */
+function lpk_gallery_admin_page($parent_id = 0) {
+  
+  //If we have a parent gallery, display title
+  $parent = NULL;
+  if($parent_id > 0) {
+    $parent = taxonomy_term_load($parent_id);
+    drupal_set_title('Galleria: ' . $parent->name);
+    
+    //Add superpage i.e. gallery admin page
+    lpk_append_breadcrumb(l('Kuvagalleriat', 'johtajat/galleria'));
+  }
+
+  //Add the "add gallery" button to the tool bar
+  if($parent == NULL || _gallery_can_add($parent, LPK_GALLERY_GALLERIES)) {
+    lpk_add_action(array(
+      '#title' => 'Uusi galleria',
+      '#path' => url('johtajat/galleria/uusi'),
+      '#classes' => 'add add-gallery'
+    ));
+  }
+  
+  //Add the "add images" button to the tool bar, if the user can add images
+  if($parent && _gallery_can_add($parent, LPK_GALLERY_IMAGES)) {
+    lpk_add_action(array(
+      '#title' => 'Lisää kuvia',
+      '#path' => url('johtajat/galleria/' . $parent->tid . '/lisaa-kuvia'),
+      '#classes' => 'add add-images'
+    ));
+  }
+  
+  //If we're viewing a gallery and the user can edit it, show edit button
+  if($parent && _lpk_gallery_access('edit galleries', 'edit own galleries', $parent->tid)) {
+    lpk_add_action(array(
+      '#title' => 'Muokkaa galleriaa',
+      '#path' => url('johtajat/galleria/' . $parent->tid . '/muokkaa'),
+      '#classes' => 'edit edit-galleries'
+    ));
+  }
+  
+  //If we're viewing a gallery and the user can delete it, show edit button
+  if($parent && _lpk_gallery_access('delete galleries', 'delete own galleries', $parent->tid)) {
+    lpk_add_action(array(
+      '#title' => 'Poista galleria',
+      '#path' => url('johtajat/galleria/' . $parent->tid . '/poista'),
+      '#classes' => 'remove remove-galleries'
+    ));
+  }
+  
+  $content = '';
+  
+  //Show list of contained galleries
+  
+  if($parent == NULL || _gallery_can_add($parent, LPK_GALLERY_GALLERIES)) {
+    $content .= '<h2>Galleriat</h2>';
+    
+    $table = array(
+      'rows' => array(),
+      'class' => 'lpk-gallery-galleries'
+    );
+    $open_gallery = 0;
+    $topgalleries = _lpk_gallery_date_sort(taxonomy_get_tree(LPK_GALLERY_VID, $parent_id, 1, TRUE));
+    if(count($topgalleries) > 0) {
+      foreach($topgalleries as $gallery) {
+        $table['rows'][] = _lpk_gallery_get_gallery_row($gallery);
+        
+        //Add child galleries
+        $children = _lpk_gallery_date_sort(taxonomy_get_tree(LPK_GALLERY_VID, $gallery->tid, 1, TRUE));
+        foreach($children as $child) {
+          $row = _lpk_gallery_get_gallery_row($child);
+          $row['class'][] = 'depth-1';
+          $row['class'][] = 'childof-' . $gallery->tid;
+          $table['rows'][] = $row;
+        }
+      }
+      $content .= theme('table', $table);
+    } else {
+      $content .= '<div class="empty">Ei gallerioita.</div>';
+    }
+  }
+  
+  //Show list of contained images
+  if($parent && _gallery_can_add($parent, LPK_GALLERY_IMAGES)) {
+    
+    //Load image nodes and display them
+    $content .= '<h2>Kuvat</h2>';
+    $images = lpk_gallery_get_image_nodes($parent->tid);
+    
+    $table = array(
+      'rows' => array(),
+      'class' => 'lpk-gallery-images'
+    );
+    
+    foreach($images as $image) {
+      $table['rows'][] = _lpk_gallery_get_image_row($image);
+    }
+    
+    $content .= theme('table', $table);
+  }
+  
+  return $content;
+}
+
+/**
+ * The form for creating or editing the gallery term.
+ * @param $form the FAPI base form array
+ * @param $form_state the FAPI form state array
+ * @param $term the tid of the gallery term to edit
+ * @param $parent the default parent to set for the term
+ */
+function lpk_gallery_gallery_form($form, $form_state, $term = 0, $parent = 0) {
+
+  //If the term exists, edit - if not, create
+  if($term != 0) {
+    $term = taxonomy_term_load($term);
+    
+    //Prevent editing non-gallery terms
+    if($term->vid != LPK_GALLERY_VID) {
+      drupal_access_denied();
+    }
+    
+    drupal_set_title('Muokkaa galleriaa ' . $term->name);
+    
+    lpk_append_breadcrumb(l('Kuvagalleriat', 'johtajat/galleria'));
+    lpk_append_breadcrumb(l($term->name, 'johtajat/galleria/' . $term->tid));
+    
+    //Add return to gallery -item
+    lpk_add_action(array(
+      '#title' => 'Palaa galleriaan',
+      '#path' => url('johtajat/galleria/' . $term->tid),
+      '#classes' => 'return return-to-gallery'
+    ));
+  } else {
+    $term = lpk_gallery_create_gallery();
+    if($parent != 0) {
+      $term->parent = $parent;
+    }
+    
+    drupal_set_title('Luo uusi galleria');
+    
+    //Add return to gallery -item
+    lpk_add_action(array(
+      '#title' => 'Palaa galleriaan',
+      '#path' => url('johtajat/galleria'),
+      '#classes' => 'return return-to-gallery'
+    ));
+    
+    //Return to parent gallery if it is set
+    
+  }
+
+  $form = array();
+  
+  $form['#lpk_term'] = $term;
+  
+  $form['#lpk_parent_id'] = 0;
+  if(isset($term->parent)) {
+    $form['#lpk_parent_id'] = $term->parent;
+  }
+  
+  $form['name'] = array(
+    '#type' => 'textfield',
+    '#title' => 'Kuvagallerian nimi',
+    '#required' => TRUE,
+  );
+  
+  $form['description'] = array(
+    '#type' => 'text_format',
+    '#title' => 'Kuvaus',
+    '#format' => 'plain_text',
+  );
+  
+  $form['parent'] = array(
+    '#type' => 'select',
+    '#title' => 'Ylägalleria',
+    '#options' => _lpk_gallery_get_options($term),
+  );
+  
+  //If we have a term, set that as default
+  if(isset($term->name)) {
+    $form['name']['#default_value'] = $term->name;
+  }
+  if(isset($term->description)) {
+    $form['description']['#default_value'] = $term->description;
+  }
+  if(isset($term->parent)) {
+    $form['parent']['#default_value'] = $term->parent;
+  }
+  
+  //Set default parent, if we come through a suitable link
+  if(isset($_GET['parent']) && empty($term->tid)) {
+    $form['parent']['#default_value'] = intval($_GET['parent']);
+  }
+  
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => 'Tallenna',
+    '#submit' => array('lpk_gallery_gallery_submit'),
+  );
+  
+  return $form;
+}
+
+/**
+ * Submit handler for lpk_gallery_gallery_form. Saves the term.
+ * @param $form the FAPI form array
+ * @param $form_stati the FAPI form state array
+ */
+function lpk_gallery_gallery_submit($form, &$form_state) {
+  $term = $form['#lpk_term'];
+  
+  $adding_new = empty($term->tid);
+  
+  $message = 'Päivitettiin';
+  if($adding_new) {
+    $message = 'Luotiin';
+  }
+  drupal_set_message($message . ' galleria <em>' . check_plain($form_state['values']['name']) . '</em>.');
+  
+  //Update values
+  $term->name = $form_state['values']['name'];
+  $term->description = $form_state['values']['description']['value'];
+  $term->parent = $form_state['values']['parent'];
+  
+  taxonomy_term_save($term);
+  
+  //If we added a gallery, go to add images page, if edited go to gallery page
+  if($adding_new) {
+    $form_state['redirect'] = 'johtajat/galleria/' . $term->tid . '/lisaa-kuvia';
+  } else {
+    $form_state['redirect'] = 'johtajat/galleria/' . $term->tid;
+  }
+}
+
+/**
+ * Add images form. Displas a few edit fields, that's all.
+ * @param $form the FAPI base form array
+ * @param $form_state the FAPI form state array
+ * @param $galleryid the id of the gallery where the images are added
+ */
+function lpk_gallery_add_images($form, $form_State, $galleryid) {
+
+  $gallery = taxonomy_term_load($galleryid);
+  
+  drupal_set_title('Lisää kuvia galleriaan ' . $gallery->name);
+  
+  //Add necessary links to the breadcrumb
+  lpk_append_breadcrumb(l('Kuvagalleriat', 'johtajat/galleria'));
+  lpk_append_breadcrumb(l($gallery->name, 'johtajat/galleria/' . $gallery->tid));
+  
+  //Add return to gallery -item
+  lpk_add_action(array(
+    '#title' => 'Palaa galleriaan',
+    '#path' => url('johtajat/galleria/' . $gallery->tid),
+    '#classes' => 'return return-to-gallery'
+  ));
+
+  //Save gallery id to the form
+  $form['#lpk_galleryid'] = intval($gallery->tid);
+  
+  $form['instructions'] = array(
+    '#markup' => '<p>Voit lisätä kerralla enintään ' . LPK_GALLERY_NUM_FORM_IMAGES . ' kuvaa.</p>'
+  );
+  
+  //Needed for form upload
+  $form['#attributes'] = array('enctype' => "multipart/form-data");
+  
+  //Add file fields
+  
+  $form['images'] = array();
+  
+  for($i = 0; $i < LPK_GALLERY_NUM_FORM_IMAGES; $i++) {
+    $form['images']['img-' . $i] = array(
+      '#type' => 'file',
+      '#size' => 25,
+    );
+  }
+  
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => 'Lisää kuvat'
+  );
+  
+  return $form;
+  
+}
+
+/**
+ * Submit handler for lpk_gallery_add_images. Saves the images and adds them to the gallery
+ * @param $form the FAPI form array
+ * @param $form_stati the FAPI form state array
+ */
+function lpk_gallery_add_images_submit($form, &$form_state) {
+
+  $galleryroot = 'public://galleria';
+ 
+  //Add the uploaded images
+  for($i = 0; $i < LPK_GALLERY_NUM_FORM_IMAGES; $i++) {
+    $file = file_save_upload('img-' . $i, array('file_validate_extensions', LPK_GALLERY_ALLOWED_EXTENSIONS), $galleryroot);
+    lpk_gallery_add_image($form['#lpk_galleryid'], $file);
+  }
+  
+}
+
+/**
+ * Gallery deletion form.
+ * @param $form the FAPI base form array
+ * @param $form_state the FAPI form state array
+ * @param $gallery_id
+ */
+function lpk_gallery_gallery_delete_form($form, &$form_state, $gallery_id) {
+  
+  $gallery = taxonomy_term_load($gallery_id);
+  
+  lpk_append_breadcrumb(l($gallery->name, 'johtajat/galleria/' . $gallery->tid));
+  
+  //Path to return to
+  $path = 'johtajat/galleria';
+  if(!empty($_GET['destination'])) {
+    $path = $_GET['destination'];
+  }
+  $description = 'Gallerian sisältämät galleriat ja kuvat poistetaan myös. Tätä toimintoa ei voi kumota.';
+  
+  $form = confirm_form($form, 'Haluatko varmasti poistaa gallerian <em>' . check_plain($gallery->name) . '</em>?',
+            $path, $description, 'Poista');
+  $form['#lpk_gallery'] = $gallery;
+  return $form;
+  
+}
+
+/**
+ * Submit handler for lpk_gallery_gallery_delete_form. Deletes the gallery.
+ * This function is never called, if the user cancels the operation.
+ * @param $form the FAPI form array
+ * @param $form_stati the FAPI form state array
+ */
+function lpk_gallery_gallery_delete_form_submit($form, &$form_state) {
+  //Redirect to gallery admin page after deletion
+  $form_state['redirect'] = 'johtajat/galleria';
+  
+  lpk_gallery_delete($form['#lpk_gallery']);
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+//                                                                            //
+// Public API & utility functions                                             //
+//                                                                            //
+////////////////////////////////////////////////////////////////////////////////
+
+/**
+ * Deletes the given gallery, it's subgalleries and the images within them.
+ * @param $gallery the gallery object to delete
+ */
+function lpk_gallery_delete($gallery) {
+  
+  //Delete subgalleries
+  $subgalleries = taxonomy_get_tree(LPK_GALLERY_VID, $gallery->tid);
+  
+  foreach($subgalleries as $subgallery) {
+    lpk_gallery_delete($subgallery);
+  }
+  
+  //Get images in the gallery and delete them
+  $nids = taxonomy_select_nodes($gallery->tid);
+  
+  node_delete_multiple($nids);
+  
+  //Delete the term itself
+  taxonomy_term_delete($gallery->tid);
+  
+  //Compose the info message
+  $message = 'Galleria ' . check_plain($gallery->name);
+  if(count($nids) > 0) {
+    $message .= ' ja sen sisältämät kuvat';
+  }
+  $message .= ' on poistettu';
+  
+  drupal_set_message($message);
+  
+  //Write to log as well
+  watchdog('gallery', 'Deleted gallery ' . check_plain($gallery->name) . ' and ' . count($nids) . ' images');
+  
+}
+
+/**
+ * Adds he given image to the given gallery. This function creates the
+ * gallery_image node, attaches the file, marks the file permanent,
+ * scales the image if necessary and adds the image node to the gallery.
+ * @param $gallery the gallery term object
+ * @param $file the file object to add
+ */
+function lpk_gallery_add_image($gallery, $file) {
+  
+  //Check that upload succeeded
+  if($file === FALSE) {
+    drupal_set_message('Kuvan ' . $file->filename . ' tiedostopääte ei kelpaa. Sallitut päätteet ovat: ' . LPK_GALLERY_ALLOWED_EXTENSIONS, 'error');
+    watchdog('gallery', 'Image ' . $file->filename . ' failed extension check');
+    return;
+  } else if($file == NULL) {
+    //No file was uploaded, so we return without doing anything
+    return;
+  }
+  
+  //Check that we can add images to this gallery
+  if(!_gallery_can_add($gallery, LPK_GALLERY_IMAGES)) {
+    drupal_set_message('Tähän galleriaan ei voi lisätä kuvia', 'error', FALSE);
+    watchdog('gallery', 'Image ' . $file->filename . ' could not be added - gallery '
+      . $gallery->name . ' (' . $gallery->tid . ') does not allow images');
+    return;
+  }
+  
+  //Make file permanent so it won't be deleted
+  $file->status = FILE_STATUS_PERMANENT;
+  $file = file_save($file);
+  
+  $title = preg_replace('/\.jpe?g$/i', '', $file->filename);
+  
+  //Add actual image node'
+  lpk_gallery_create_image($gallery, $title, $file);
+}
+
+/**
+ * Resizes the image, creates an image node and attaches it to the given gallery.
+ * @param $gallery the gallery term object
+ * @param $title the title of the image node
+ * @param $file the image file
+ */
+function lpk_gallery_create_image($gallery, $title, $file) {
+  
+  //Create & save image node
+  $node = new stdClass();
+  $node->type = 'gallery_image';
+  node_object_prepare($node);
+  $node->title = $title;
+  $node->language = 'fi';
+  $node->field_gallery['fi'][0]['tid'] = $gallery;
+  $node->field_imagefield['fi'][0] = (array) $file;
+  
+  //Use exif date if possible
+  $exiftime = lpk_gallery_image_created($file);
+  if($exiftime != NULL) {
+    $node->created = $exiftime;
+    $node->field_exifdate['fi'][0]['value'] = 1;
+  }
+  
+  //Scale the image down - this must be done after determining
+  //the creation time, as the scaling loses EXIF data
+  _lpk_gallery_scale_image($file);
+  
+  node_save($node);
+  
+  //Check that file and node were successfully saved
+  if($file && $node->nid) {
+    drupal_set_message('Kuva <em>' . $file->filename . '</em> lisättiin galleriaan.');
+  } else {
+    drupal_set_message('Kuvan <em>' . $file->filename . '</em> tallennus epäonnistui. Jos ongelma ei häviä, ilmoita asiasta ylläpitoon.', 'error');
+  }
+  
+}
+
+/**
+ * Checks if the given gallery is empty. A gallery is empty when
+ * it contains no images nor galleries or when the galleries it contains
+ * are empty.
+ * @param $gallery the gallery term object
+ * @return true if the gallery is empty, false othwerwise
+ */
+function lpk_gallery_is_empty($gallery) {
+  
+  //Check if there are images in the gallery -> not empty
+  if(lpk_gallery_has_images($gallery->tid)) {
+    return FALSE;
+  }
+    
+  //Check if the sub galleries contain images
+  $subgalleries = taxonomy_get_tree(LPK_GALLERY_VID, $gallery->tid);
+  foreach($subgalleries as $subgallery) {
+    if(lpk_gallery_has_images($subgallery->tid)) {
+      return FALSE;
+    }
+  }
+  
+  return TRUE;
+}
+
+/**
+ * Checks if the given gallery contains images. This function
+ * does not consider subgalleries - it only searches for images
+ * contained directly in this gallery.
+ * @param $gallery the gallery term object
+ * @return true if the gallery contains images, false otherwise
+ */
+function lpk_gallery_has_images($gallery) {
+  if(count(taxonomy_select_nodes($gallery, FALSE, 1)) > 0) {
+    return TRUE;
+  }
+  return FALSE;
+}
+
+/**
+ * Returns the date when the given image was taken.
+ * @param file a file object containing an image with EXIF data
+ * @return a timestamp of the date the given image was taken, of NULL if
+ * the information could not be found
+ */
+function lpk_gallery_image_created($file) {
+  $date = NULL;
+  
+  //If we have the exif extension, we can get the creation time
+  if(extension_loaded("exif")) {
+    
+    $exif = exif_read_data(drupal_realpath($file->uri), 0, true);
+    
+    //Try original and datetime fields
+    if($exif['EXIF']['DateTimeOriginal']) {
+      $date = strtotime($exif['EXIF']['DateTimeOriginal']);
+    } else if($exif['IFD0']['DateTime']) {
+      $date = strtotime($exif['IFD0']['DateTime']);
+    }
+  }
+  
+  return $date;
+}
+
+/**
+ * Returns a random image form the given gallery or it's
+ * subgalleries. The image is selected randomly from the
+ * given gallery if it contains images or if not, from it's
+ * subgalleries. If the gallery is empty, NULL is returned.
+ * @param tid the term id of the gallery
+ * @return the node id of the image
+ */
+function lpk_gallery_get_random_image($tid = 0) {
+  $nids = lpk_gallery_get_image_nids($tid);
+  
+  //If there are no images, check child galleries
+  if(count($nids) == 0) {
+    $child_galleries = taxonomy_get_tree(LPK_GALLERY_VID, $tid);
+    
+    //Random order
+    shuffle($child_galleries);
+    
+    foreach($child_galleries as $gallery) {
+      $image = lpk_gallery_get_random_image($gallery->tid);
+      
+      //If there are images, in the gallery, use them
+      if($image != NULL) {
+        return $image;
+      }
+    }
+    
+  }
+  
+  //If there are no images still, the gallery is empty
+  if(count($nids) == 0) {
+    return NULL;
+  }
+  
+  //Return a random nid
+  return $nids[rand(0, count($nids) - 1)];
+}
+
+/**
+ * Returns the an array of node id:s of the images in the given gallery.
+ * @param $tid the term id
+ * @return an array of nids
+ */
+function lpk_gallery_get_image_nids($tid) {
+  return taxonomy_select_nodes($tid, false, false, array('t.sticky' => 'DESC', 't.created' => 'ASC'));
+}
+
+/**
+ * Returns the an array of image node entities of the given gallery.
+ * @param $tid the term id
+ * @return an array of image entities
+ */
+function lpk_gallery_get_image_nodes($tid) {
+  return node_load_multiple(lpk_gallery_get_image_nids($tid));
+}
+
+/**
+ * Returns the HTML for the given image node and size.
+ * @param $image the gallery_image node
+ * @param $size the size of the image
+ * @return the html of the image
+ */
+function lpk_gallery_get_image_html($image, $size = 'thumbnail') {
+  $image_style = array(
+    'style_name' => $size,
+    'path' => $image->field_imagefield['fi'][0]['uri']
+  );
+  return theme('image_style', $image_style);
+}
+
+/**
+ * Returns the previous and next image nodes and the gallery
+ * of the given image.
+ * @param image the image node
+ * @return an array with the items <em>prev</em>, <em>next</em> and
+ * <em>gallery</em>, each containing the required entities. If there is
+ * no previous or next node, the items are empty.
+ */
+function lpk_gallery_image_info($image) {
+  $tid = $image->field_gallery['fi'][0]['tid'];
+  $nodes = lpk_gallery_get_image_nids($tid);
+  $prev_nid = 0;
+  $next_nid = 0;
+  
+  //Add a zero to simplify the loop
+  $nodes[] = 0;
+  
+  //Go through nodes to find next and previous
+  for($i = 0; $i < count($nodes); $i++) {
+    
+    //This is the current image - previous and next are around it
+    if($nodes[$i] == $image->nid) {
+      
+      //If there is a next image, get it as next
+      if($i+1 < count($nodes)) {
+        $next_nid = $nodes[$i+1];
+      }
+      
+      break;
+      
+    }
+    
+    //This wasn't it - set it as previous
+    $prev_nid = $nodes[$i];
+  }
+  
+  return array(
+    'prev' => node_load($prev_nid),
+    'next' => node_load($next_nid),
+    'gallery' => taxonomy_term_load($tid)
+  );
+}
+
+/**
+ * Appends the parents of the given term to the breadcrumb.
+ * @param $parentid the tid of the parent node. This node is
+ * not added to the breadcrumb.
+ */
+function lpk_gallery_append_parents($parentid) {
+  while ($parents = taxonomy_get_parents($parentid)) {
+    
+    //If there are no more parents, stop adding them
+    if(count($parents) == 0) {
+      break;
+    }
+    
+    //Start looking for this parent's parent
+    $current_parent = end($parents);
+    $parentid = $current_parent->tid;
+    
+    lpk_append_breadcrumb(l($current_parent->name, 'galleria/' . $current_parent->tid));
+  }
+}
+
+/**
+ * Returns the HTML for the per-image navigation i.e. the links
+ * to the previous and next images and the gallery
+ * @param $image the current image
+ * @param $fragment the url fragment to use for the link - do not
+ * include the hash sign (#)
+ */
+function lpk_gallery_imagenav($image, $fragment = NULL) {
+  $info = lpk_gallery_image_info($image); 
+  
+  $items = array();
+  
+  $items[] = _lpk_gallery_get_image_link_item('prev', $info['prev'], 'Edellinen', $fragment);
+  
+  //Add image gallery link
+  if(!empty($info['gallery'])) {
+    $items[] = array(
+      'classes' => 'gallery',
+      'content' => l($info['gallery']->name, 'galleria/' . $info['gallery']->tid),
+    );
+  }
+  
+  $items[] = _lpk_gallery_get_image_link_item('next', $info['next'], 'Seuraava', $fragment);
+  
+  //This could be moved to a theme function later
+  $output  = '<ul class="lpk-imagenav">';
+  foreach($items as $item) {
+    $output .= '<li class="' . $item['classes'] . '">' . $item['content'] . '</li>';
+  }
+  $output .= '</ul>';
+  
+  return $output;
+}
+
+function lpk_gallery_get_latest_galleries($count) {
+
+  //Get all galleries and order by creation date
+  $tree = taxonomy_get_tree(LPK_GALLERY_VID, 0, NULL, TRUE);
+  $tree = _lpk_gallery_date_sort($tree);
+  
+  //Select the ones that directly contain images
+  $selected = array();
+  foreach ($tree as $key => $gallery) {
+    
+    //Check if the gallery has images
+    
+    $images = lpk_gallery_get_image_nids($gallery->tid);
+    
+    $image = _lpk_gallery_get_viewable_image($images);
+    
+    if($image !== FALSE) {
+      $selected[] = array(
+        'gallery' => $gallery,
+        'image' => $image,
+        'numimages' => count($images)
+      );
+    }
+    
+    //If we already have $count images, return
+    if(count($selected) >= $count) {
+      break;
+    }
+  }
+  
+  return $selected;
+}
+
+//////////////////////////// UTILS ///////////////////////////////
+
+function _lpk_gallery_get_viewable_image($nids) {
+  //Go through nids and return the first node we have access to
+  foreach ($nids as $nid) {
+    $node = node_load($nid);
+    if(node_access('view', $node, drupal_anonymous_user())) {
+      return $node;
+    }
+  }
+  return FALSE;
+}
+
+/**
+ * Helper function for lpk_gallery_imagenav(). Returns a link item.
+ */
+function _lpk_gallery_get_image_link_item($type, $node, $title, $fragment = NULL) {
+
+  //If we have a link
+  if(!empty($node)) {
+    return array(
+      'classes' => $type,
+      'content' => l($title, 'node/' . $node->nid, array('fragment' => $fragment)),
+    );
+  } else {
+    return array(
+      'classes' => 'prev disabled',
+      'content' => $title,
+    );
+  }
+  
+}
+
+/**
+ * Returns a row for the admin page gallery list's table.
+ * @param $gallery the gallery this row represents
+ * @return the row array
+ */
+function _lpk_gallery_get_gallery_row($gallery) {
+
+  //Prepare row
+  $row = array(
+    'class' => array('active'),
+    'data' => array(),
+  );
+  
+  $path =  'johtajat/galleria/' . $gallery->tid;
+  
+  //Gallery name: show that gallery is empty, if it is
+  if(!lpk_gallery_is_empty($gallery)) {
+    $row['data'][] = array(
+      'data' => l($gallery->name, $path),
+      'class' => 'name',
+    );
+  } else {
+      $row['data'][] = array(
+        'data' => l($gallery->name, $path) . ' (tyhjä)',
+        'class' => 'name',
+      );
+      $row['class'] = array('empty');
+  }
+  
+  //Actions ("add images" etc.) cell
+  $actions = array(
+    'data' => '',
+    'class' => 'actions',
+  );
+  
+  //"Add images" link
+  if(_gallery_can_add($gallery, LPK_GALLERY_IMAGES) && user_access('create image content')) {
+    $actions['data'] .= l(
+      'Lisää kuvia',
+      'johtajat/galleria/' . $gallery->tid . '/lisaa-kuvia',
+      array(
+        'attributes' => array('class'=>'add add-images'))
+      );
+      $actions['data'] .= ' ';
+  }
+  
+  //"Add galleries" link
+  if(_gallery_can_add($gallery, LPK_GALLERY_GALLERIES) && user_access('create new galleries')) {
+    $actions['data'] .= l(
+      'Lisää galleria',
+      'johtajat/galleria/uusi',
+      array(
+        'attributes' => array('class'=>'add add-images'),
+        'query'=>array('parent'=>$gallery->tid)
+      )
+    );
+  }
+  
+  //Edit link
+  $editcell = array(
+    'data' => 'Muokkaa',
+    'class' => 'edit disabled',
+  );
+  if(_lpk_gallery_access('edit galleries', 'edit own galleries', $gallery->tid)) {
+    $editcell['data'] = l(t('Edit'), 'johtajat/galleria/' . $gallery->tid . '/muokkaa');
+    $editcell['class'] = 'edit';
+  }
+
+  //Delete link
+  $deletecell = array(
+    'data' => 'Poista',
+    'class' => 'delete disabled',
+  );
+  if(_lpk_gallery_access('delete galleries', 'delete own galleries', $gallery->tid)) {
+    $deletecell['data'] = l(t('Delete'), 'johtajat/galleria/' . $gallery->tid . '/poista');
+    $deletecell['class'] = 'delete';
+  }
+  
+  //Add actions if there are some
+  $row['data'][] = $actions;
+  $row['data'][] = $editcell;
+  $row['data'][] = $deletecell;
+  
+  return $row;
+}
+
+/**
+ * Returns a row for the admin page image list's table.
+ * @param $image the image this row represents
+ * @return the row array
+ */
+function _lpk_gallery_get_image_row($image) {
+
+  //Prepare row
+  $row = array();
+  
+  $row[] = lpk_gallery_get_image_html($image);
+  $row[] = l($image->title, 'node/' . $image->nid);
+  
+  $options = array(
+    'query' => array('destination' => 'johtajat/galleria/' . $image->field_gallery['fi'][0]['tid'])
+  );
+  
+  //If we can edit, show edit link
+  if(node_access('update', $image)) {
+    $row[] = l('Muokkaa', 'node/' . $image->nid . '/edit', $options);
+  } else {
+    $row[] = '';
+  }
+
+  if(node_access('delete', $image)) {
+    $row[] = l('Poista', 'node/' . $image->nid . '/delete', $options);
+  } else {
+    $row[] = '';
+  }
+  
+  return $row;
+}
+
+/**
+ * Returns a gallery item for the public gallery list.
+ * @param $gallery the gallery displayed by the item
+ * @return the html for the list item
+ */
+function _lpk_gallery_gallery_item($gallery) {
+  
+  //Get number of child galleries
+  $children = taxonomy_get_tree(LPK_GALLERY_VID, $gallery->tid);
+  
+  //Get all images in the gallery to get a count and thumbnail
+  $images = lpk_gallery_get_image_nids($gallery->tid);
+  $image_nid = NULL;
+  
+  if(count($images) > 0) {
+    //There are images, let's get a random one
+    $image_nid = $images[rand(0, count($images) - 1)];
+  } else {
+    //Else there are images in subgalleries
+    $image_nid = lpk_gallery_get_random_image($gallery->tid);
+  }
+  
+  //Add number of images and galleries  
+  $heading = check_plain($gallery->name);
+  if($image_nid != NULL) {
+    $image = node_load($image_nid);
+    $heading .= lpk_gallery_get_image_html($image);
+  }
+  
+  //Generate output
+  $output  = '<li class="gallery">';
+  $output .= '<h2>' . l($heading, 'galleria/' . $gallery->tid, array('html' => TRUE)) . '</h2>';
+  
+  //Add description
+  $desc = check_markup($gallery->description, $gallery->format);
+  if($desc) {
+    $output .= "<div class=\"desc\">$desc</div>";
+  }
+  
+  //Add creation time
+  $output .= '<div class="created">Luotu ' . date('d.m.Y', $gallery->field_created['und'][0]['value']) . '</div>';
+  
+  $output .= '<div class="num-galleries">';
+  
+  //Show number of galleries
+  if(count($children) == 0 && count($images) == 0) {
+    $output .= 'Ei sisällä kuvia eikä gallerioita.';
+  } else {
+    
+    //There are either galleries or images
+    if(count($children) != 0) {
+      $output .= lpk_plural(count($children), 'galleria', 'galleriaa');
+    }
+    if(count($images) != 0) {
+      $output .= lpk_plural(count($images), 'kuva', 'kuvaa');
+    }
+    
+  }
+  
+  $output .= "</div>\n";
+
+  $output .= '</li>';
+  
+  return $output;
+}
+
+
+/**
+ * Returns an image item for the public gallery/image list.
+ * @param $image the image displayed by the item
+ * @return the html for the list item
+ */
+function _lpk_gallery_image_item($image) {
+  $content = lpk_gallery_get_image_html($image, 'small_square');
+  $content .= '<span class="gallery-image">' . check_plain($image->title) . '</span>';
+  
+  $output  = '<li>';
+  $output .= l($content, 'node/' . $image->nid, array('html' => TRUE));
+  $output .= "</li>";
+  
+  return $output;
+}
+
+/**
+ * Sorts the given array of galleries by date added.
+ * @param $galleries the array of gallery term object - these must be full entities
+ * @return an ordered array of galleries. Keys are not maintained
+ */
+function _lpk_gallery_date_sort($galleries) {
+  $sorted = array();
+  foreach($galleries as $key=>$gallery) {
+    $sorted['k' . $key] = $gallery->field_created['und'][0]['value'];
+  }
+  
+  arsort($sorted, SORT_DESC);
+  
+  foreach($galleries as $key=>$gallery) {
+    $sorted['k' . $key] = $gallery;
+  }
+  
+  return $sorted;
+}
+
+/**
+ * Checks if either images or galleries can be added into the given
+ * gallery. NOTE: This function does not consider user access rights.
+ * @param $gallery the gallery term object
+ * @param $action the action to check - LPK_GALLERY_IMAGES for checking if images can
+ * be added or LPK_GALLERY_GALLERIES for checking if galleries can be added.
+ * @return true if can be added, false otherwise
+ */
+function _gallery_can_add($gallery, $action) {
+  
+  //If we're given an id, load the gallery
+  if(is_int($gallery)) {
+    $gallery = taxonomy_term_load($gallery);
+  }
+  
+  if($gallery->field_allowed_content['und'][0]['value'] == LPK_GALLERY_IMAGES_AND_GALLERIES) {
+    return true;
+  }
+
+  if($gallery->field_allowed_content['und'][0]['value'] == $action) {
+    return true;
+  }
+  
+  return false;
+}
+
+/**
+ * A utility function that checks if the user has $adminperm or
+ * the user has $ownperm and is the author of the node.
+ */
+function _lpk_gallery_access($adminperm, $ownperm, $gallery_id) {
+  global $user;
+  
+  //If we can delete/edit any gallery, always return true
+  if(user_access($adminperm)) {
+    return TRUE;
+  }
+  
+  //Else check if this is our own gallery
+  $gallery = taxonomy_term_load($gallery_id);
+  
+  if(isset($gallery->field_user) && $gallery->field_user['und'][0]['value'] == $user->uid && user_access($ownperm)) {
+    return TRUE;
+  }
+  
+  return FALSE;
+  
+}
+
+/**
+ * An image-scaling helper function
+ */
+function _lpk_gallery_scale_image($file) {
+  $image = image_load($file->uri);
+  image_scale($image, LPK_GALLERY_SCALE_LONGER_SIDE, LPK_GALLERY_SCALE_LONGER_SIDE);
+  image_save($image);
+}
+
+/**
+ * Returns the available options for parent gallery in the add gallery form's
+ * parent gallery list.
+ * @param $term the term being edited or added on the form
+ * @return a FAPI array of options
+ */
+function _lpk_gallery_get_options($term = NULL) {
+
+  //Only select top-level galleries as we only want to allow two levels of galleries
+  $tree = taxonomy_get_tree(LPK_GALLERY_VID, 0, 1, TRUE);
+  
+  $options = array();
+ 
+  foreach($tree as $key=>$item) {
+    if((!isset($term->tid) || $term->tid != $item->tid) && _gallery_can_add($item, LPK_GALLERY_GALLERIES)) {
+      $options[$item->tid] = $item->name;
+    }
+  }
+  
+  //Order newest first
+  krsort($options);
+  
+  return $options;
+}
+
+/**
+ * Creates an empty gallery object for the given parent gallery.
+ * @param $parent the term id of the parent gallery
+ * @return the gallery term object
+ */
+function lpk_gallery_create_gallery($parent = 0) {
+  global $user;
+  
+  $gallery = new stdClass();
+  $gallery->format = 'plain_text';
+  $gallery->vid = LPK_GALLERY_VID;
+  $gallery->parent = $parent;
+  $gallery->field_user['und'][0]['value'] = $user->uid;
+  $gallery->field_created['und'][0]['value'] = time();
+  
+  return $gallery;
+}
+

@@ -1,0 +1,14 @@
+<?php
+//$Id$
+
+/**
+ * HIERONNAT:
+ * - arkisto ja arkistoblocki
+ */
+
+/**
+* Implements hook_block_info().
+*//*
+function lpk_blog_block_info() { 
+  
+}*/

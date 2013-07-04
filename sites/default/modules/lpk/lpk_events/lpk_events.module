@@ -1,0 +1,38 @@
+<?php
+//$Id$
+
+function lpk_events_form_event_node_form_alter(&$form, &$form_state, $form_id) {
+
+  //Force filtered HTML as input format
+  lpk_set_default_format($form['body'], 'filtered_html');
+  lpk_hide_format_selection($form['body']);
+
+  if(arg(1) == 'add') {
+    //Add checkbox for immediately adding the next item
+    $form['lpk_events_addnext'] = array(
+      "#type" => "checkbox",
+      "#title" => "Siirry suoraan lisäämään uutta tapahtumaa tallentamisen jälkeen",
+      "#default_value" => (isset($_GET['addnext']))
+    );
+    
+    //Add submit handler for redirecting based on checkbox selection
+    $form['actions']['submit']['#submit'][] = 'lpk_events_submit';
+  }
+  
+}
+
+/**
+ * A submit handler for the node form - redirects users to add a new event
+ * immediately after the previous one if the checkbox is checked.
+ */
+function lpk_events_submit($form, &$form_state) {
+  if($form_state['values']['lpk_events_addnext']) {
+    $form_state['redirect'] = url('node/add/event', array(
+        'query'=>array(
+            'addnext'=>NULL
+          ),
+        'absolute'=>TRUE
+        )
+    );
+  }
+}

@@ -1,0 +1,76 @@
+<?php
+//$Id$
+
+function lpk_groups_form_group_node_form_alter(&$form, &$form_state, $form_id) {
+  
+  //hide real time field
+  $form['field_time']['#access'] = FALSE;
+  
+  //Add human-readable time field
+  $form['lpk_time'] = array(
+    '#type' => 'textfield',
+    '#weight' => 5,
+    '#title' => 'Kellonaika',
+    '#description' => 'Muodossa TT:MM',
+    '#size' => 8,
+    '#maxlength' => 5,
+    '#required' => TRUE,
+    '#default_value' => '00:00'
+  );
+  
+  //Add function that validates the field, creates a timestamp
+  //and adds the timestamp to the real time field
+  $form['#validate'][] = 'lpk_groups_form_validate';
+  
+  //If the value is already set, use that as default
+  if(isset($form['#node']->field_time['fi'][0]['value'])) {
+    $time = lpk_format_time($form['#node']->field_time['fi'][0]['value']);
+    $form['lpk_time']['#default_value'] = $time;
+  }
+  
+  //Set contact info to be plaintext
+  lpk_set_default_format($form['field_contact'], 'plain_text');
+  lpk_hide_format_selection($form['field_contact']);
+  
+}
+
+function lpk_groups_form_validate(&$form, &$form_state) {
+  $value = $form_state['values']['lpk_time'];
+  $parts = explode(':', $value);
+  
+  //Validate that there is the right number of parts and they
+  //are in the correct range.
+  
+  if(count($parts) != 2) {
+    _lpk_groups_set_time_error();
+    return;
+  }
+  
+  if(!is_numeric($parts[0]) || !is_numeric($parts[1])) {
+    _lpk_groups_set_time_error('Tunnit ja minuutit pitää antaa numeroina');
+    return;
+  }
+  
+  if($parts[0] < 0 || $parts[0] > 23) {
+    _lpk_groups_set_time_error('Tunnin on oltava väliltä 0-23');
+    return;
+  }
+  
+  if($parts[1] < 0 || $parts[1] > 59) {
+    _lpk_groups_set_time_error('Minuutin on oltava väliltä 0-59');
+    return;
+  }
+  
+  //Compute the time
+  $time = ($parts[0] * 60 + $parts[1]) * 60;
+  
+  //Set actual time stamp field
+  if(isset($form['#node']->language) && isset($form['field_time'])) {
+    $form_state['values']['field_time'][$form['#node']->language][0]['value'] = $time;
+  }
+  
+}
+
+function _lpk_groups_set_time_error($message = 'Anna kokouksen kellonaika muodossa TT:MM') {
+  form_set_error('lpk_time', $message);
+}

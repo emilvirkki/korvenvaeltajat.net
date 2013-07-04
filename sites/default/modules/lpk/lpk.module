@@ -1,0 +1,867 @@
+<?php
+//$Id$
+
+/* Koodi-todo
+
+Katso todo: Trello, https://trello.com/board/korvenvaeltajat-net/4fcf8496705a5eb22b619d7e
+
+*/
+
+
+////////////////////////////////////////////////////////////////////////////////
+//                                                                            //
+// Define site-wide constants                                                 //
+//                                                                            //
+////////////////////////////////////////////////////////////////////////////////
+
+
+/**
+ * Administrator role id.
+ */
+define('LPK_ROLE_ADMIN', 3);
+
+/**
+ * Cottage host role id.
+ */
+define('LPK_ROLE_COTTAGEHOST', 7);
+
+
+////////////////////////////////////////////////////////////////////////////////
+//                                                                            //
+// Drupal hooks                                                               //
+//                                                                            //
+////////////////////////////////////////////////////////////////////////////////
+
+
+/*
+ * Implements hook_permission().
+ */
+function lpk_permission() {
+  return array(
+    'access leader section' => array(
+      'title' => t('Access leader section'),
+      'description' => t('Access the leader pages.'),
+    ),
+  );
+}
+
+/**
+ * Implements hook_menu(). Adds leader pages item.
+ */
+function lpk_menu() {
+
+  $items = array();
+  $items['johtajat'] = array(
+    'title' => 'Johtajat',
+    'page callback' => 'lpk_leader_page',
+    //'delivery callback' => 'ajax_deliver',
+    'access callback' => 'user_access',
+    'access arguments' => array('access leader section'),
+    'description' => 'Johtajasivujen etusivu.',
+  );
+  $items['johtajat/tiedostot'] = array(
+    'title' => 'Tiedostot',
+    'page callback' => 'lpk_files_page',
+    //'delivery callback' => 'ajax_deliver',
+    'access callback' => 'user_access',
+    'access arguments' => array('access leader section'),
+    'description' => 'Tiedostojen hallinta.',
+  );
+  return $items;
+  
+}
+
+
+/**
+* Implements hook_theme(). Registers the theme_lpk_toolbar theme function
+*/
+function lpk_theme($existing, $type, $theme, $path) { 
+  return array(
+    'lpk_toolbar' => array()
+  );
+}
+
+/**
+ * Implements hook_form_alter(). Tweaks the appearance of the user form
+ * and adds the ability to generate passwords automatically.
+ */
+function lpk_form_alter(&$form, &$form_state, $form_id) {
+  
+  //Reorder fields and hide useless fields in the user forms
+  if($form_id == 'user_profile_form' || $form_id == 'user_register_form') {
+  
+    //Field descriptions
+    $form['account']['name']['#description'] = 'Muotoa etunini.sukunimi';
+
+    //Move custom fields inside the account
+    $form['account']['field_fullname'] = $form['field_fullname'];
+    $form['account']['field_phone'] = $form['field_phone'];
+    unset($form['field_fullname']);
+    unset($form['field_phone']);
+    
+    //Reorder fields to username, name, email, phone
+    $form['account']['name']['#weight'] = -3;
+    $form['account']['field_fullname']['#weight'] = -2;
+    $form['account']['mail']['#weight'] = -1;
+    $form['account']['field_phone']['#weight'] = 0;
+
+    //Hide the useless locale selector
+    $form['locale']['#access'] = FALSE;
+    
+  }
+  
+  //Generate random password and hide the password fields for new users
+  if($form_id == 'user_register_form') {
+    
+    //Generate a default password
+    $form['account']['pass']['#type'] = 'value';
+    $form['account']['pass']['#value'] = user_password(20);
+    
+    //Always notify user of account
+    $form['account']['notify']['#type'] = 'value';
+    $form['account']['notify']['#value'] = 1;
+    
+  }
+  
+  //Hide useless instruction on the login page
+  if($form_id == 'user_login') {
+    $form['pass']['#description'] = NULL;
+    $form['#submit'][] = '_lpk_redirect_user';
+  }
+  
+  //Make sure the search block displays the label
+  if($form_id == 'search_block_form') {
+    //Un-hide the label and set a more descriptive text
+    unset($form['search_block_form']['#title_display']);
+    $form['search_block_form']['#title'] = 'Hae sivustolta';
+  }
+}
+
+
+/**
+ * Implements hook_mail().
+ */
+function lpk_mail($key, &$message, $params) { 
+  $message['subject'] = $params['subject'];
+  $message['body']    = array($params['body']);
+  if($params['headers']) {
+    foreach ($params['headers'] as $key => $value) {
+      $message['headers']['key'] = $value;
+    }
+  }
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+//                                                                            //
+// Pages                                                                      //
+//                                                                            //
+////////////////////////////////////////////////////////////////////////////////
+
+/**
+ * Leader page callback.
+ * @return the HTML for the page
+ */
+function lpk_leader_page() {
+  global $user;
+  
+  $content = array();
+  
+  /* //SINGLE ITEM
+  $content[] = array(
+    '#title' => '',
+    '#class' => '',
+    '#description' => '',
+    '#links' => array(
+      array(
+        '#title' => '',
+        '#path' => '',
+      ),
+    ),
+  );
+  */
+  
+  $content[] = array(
+    '#title' => 'Uutiset',
+    '#class' => 'news',
+    '#description' => 'Julkaise ajankohtaisia ilmoituksia.',
+    '#links' => array(
+      array(
+        '#title' => 'Uusi uutinen',
+        '#path' => 'node/add/article',
+        '#access' => 'create article content',
+      ),
+      array(
+        '#title' => 'Kaikki uutiset',
+        '#path' => 'johtajat/uutiset',
+        '#access' => 'edit own article content',
+      ),
+    ),
+  );
+  
+  $content[] = array(
+    '#title' => 'Joukkosähköposti',
+    '#class' => 'news',
+    '#description' => 'Lähetä sähköpostia joukolle sivuston käyttäjiä.',
+    '#links' => array(
+      array(
+        '#title' => 'Sähköposti kaikille johtajille',
+        '#path' => 'johtajat/sahkoposti',
+        '#access' => 'send emails',
+      ),
+    ),
+  );
+  
+  $content[] = array(
+    '#title' => 'Tapahtumakalenteri',
+    '#class' => 'events',
+    '#description' => 'Lippukunnan tapahtumakalenteri.',
+    '#links' => array(
+      array(
+        '#title' => 'Uusi tapahtuma',
+        '#path' => 'node/add/event',
+        '#access' => 'create event content',
+      ),
+      array(
+        '#title' => 'Kaikki tapahtumat',
+        '#path' => 'johtajat/tapahtumakalenteri',
+        '#access' => 'edit own event content',
+      ),
+    ),
+  );
+  
+  $content[] = array(
+    '#title' => 'Blogi',
+    '#class' => 'blog',
+    '#description' => '',
+    '#links' => array(
+      array(
+        '#title' => 'Uusi blogikirjoitus',
+        '#path' => 'node/add/blogpost',
+        '#access' => 'create blogpost content'
+      ),
+      array(
+        '#title' => 'Omat kirjoitukset',
+        '#path' => 'johtajat/blogi/omat-kirjoitukset',
+        '#access' => 'edit own blogpost content'
+      ),
+    ),
+  );
+  
+  $content[] = array(
+    '#title' => 'Kuvagalleria',
+    '#class' => 'gallery',
+    '#description' => 'Luo kuvagallerioita ja lisää kuvia.',
+    '#links' => array(
+      array(
+        '#title' => 'Uusi galleria',
+        '#path' => 'johtajat/galleria/uusi',
+        '#access' => 'create new galleries'
+      ),
+      array(
+        '#title' => 'Kaikki galleriat',
+        '#path' => 'johtajat/galleria',
+        '#access' => 'access gallery admin page'
+      ),
+    ),
+  );
+  
+  $content['groups'] = array(
+    '#title' => 'Ryhmät',
+    '#class' => 'groups',
+    '#description' => 'Muokkaa toimintaryhmien tietoja.',
+    '#links' => array(
+      array(
+        '#title' => 'Uusi ryhmä',
+        '#path' => 'node/add/group',
+        '#access' => 'create group content',
+      ),
+    ),
+  );
+  
+  //Add user's own groups
+  $group_ids = lpk_get_user_nids($user->uid, 'group');
+  foreach($group_ids as $group_id) {
+    $content['groups']['#links'][] = array(
+      '#title' => 'Muokkaa: ' . lpk_get_node_title($group_id),
+      '#path' => 'node/' . $group_id . '/edit',
+      '#access' => 'edit own group content'
+    );
+  }
+  
+  //Add all groups list
+  $content['groups']['#links'][] = array(
+    '#title' => 'Kaikki ryhmät',
+    '#path' => 'johtajat/ryhmat',
+    '#access' => 'create group content',
+  );
+  
+  //If the user doesn't have any own groups and has no right to add a group,
+  //remove the item
+  if(count($group_ids) == 0 && !user_access('create group content')) {
+    unset($content['groups']);
+  }
+  
+  $content[] = array(
+    '#title' => 'Kämpän varaukset',
+    '#class' => 'bookings',
+    //'#description' => 'Varaa kämppä ja katso varauksia.',
+    '#links' => array(
+      array(
+        '#title' => 'Varaa kämppä',
+        '#path' => 'node/add/booking',
+        '#access' => 'create booking content',
+      ),
+      array(
+        '#title' => 'Kaikki varaukset',
+        '#path' => 'johtajat/kampan-varaus',
+        '#access' => 'access booking nodes'
+      ),
+    ),
+  );
+  
+  $content[] = array(
+    '#title' => 'Tiedostot',
+    '#class' => 'leader-files',
+    '#description' => '',
+    '#links' => array(
+      array(
+        '#title' => 'Tiedostojen hallinta',
+        '#path' => 'johtajat/tiedostot',
+        '#access' => 'access leader section',
+      ),
+    ),
+  );
+  
+  $content[] = array(
+    '#title' => 'Johtajien yhteystiedot',
+    '#class' => 'leader-contacts',
+    '#description' => 'Johtajien sähköpostiosoitteet ja yhteystiedot.',
+    '#links' => array(
+      array(
+        '#title' => 'Johtajien yhteystiedot',
+        '#path' => 'johtajat/johtajien-yhteystiedot',
+        '#access' => 'access user profiles',
+      ),
+    ),
+  );
+  
+  $content[] = array(
+    '#title' => 'Hallitse sisältöä',
+    '#class' => 'manage-content',
+    '#description' => '',
+    '#links' => array(
+      array(
+        '#title' => 'Hallitse sisältöä',
+        '#path' => 'admin/content',
+        '#access' => 'administer nodes',
+      ),
+      array(
+        '#title' => 'Hallitse kommentteja',
+        '#path' => 'admin/content/comment',
+        '#access' => 'administer comments',
+      ),
+    ),
+  );
+  
+  $content[] = array(
+    '#title' => 'Käyttäjät',
+    '#class' => 'users',
+    '#description' => 'Luo ja muokkaa käyttäjätilejä.',
+    '#links' => array(
+      array(
+        '#title' => 'Uusi käyttäjä',
+        '#path' => 'admin/people/create',
+        '#access' => 'administer users',
+      ),
+      array(
+        '#title' => 'Kaikki käyttäjät',
+        '#path' => 'admin/people',
+        '#access' => 'administer users',
+      ),
+    ),
+  );
+  
+  $content[] = array(
+    '#title' => 'Loki',
+    '#class' => 'log',
+    '#description' => 'Katsele sivuston lokitietoja - kuka teki mitä ja milloin.',
+    '#links' => array(
+      array(
+        '#title' => 'Katsele lokia',
+        '#path' => 'admin/reports/dblog',
+        '#access' => 'access site reports'
+      ),
+    ),
+  );
+  
+  $content[] = array(
+    '#title' => 'Oma käyttäjätili',
+    '#class' => 'my-account',
+    '#description' => 'Vaihda salasanaa tai muuta yhteystietojasi.',
+    '#links' => array(
+      array(
+        '#title' => 'Muokkaa käyttäjätietoja',
+        '#path' => 'user/' . $user->uid . '/edit',
+        '#access' => 'access content'
+      ),
+    ),
+  );
+  
+  return _lpk_render_page($content);
+}
+
+/**
+ * Simply displays the IMCE file manager
+ */
+function lpk_files_page() {
+  return '<iframe src="/imce" class="imce"></iframe>';
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+//                                                                            //
+// Public API & utility functions                                             //
+//                                                                            //
+////////////////////////////////////////////////////////////////////////////////
+
+
+/**
+ * Adds a button to the toolbar of the current page. If called without arguments,
+ * it returns the buttons added for the current page.
+ * @param $button the button to add as an array with the following items:
+ * <ul>
+ * <li>#label the label of the button</li>
+ * <li>#path the link path - this needs to go through url() before it's added here</li>
+ * <li>#classes an array or string of classes for the button such as "add",
+ * "delete", "back" and more specific ones</li>
+ * </ul>
+ * @return an array of buttons, if $button is not set
+ */
+function lpk_add_action($button = NULL) {
+  static $buttons = array();
+  
+  if($button != NULL) {
+    $buttons[] = $button;
+  } else {
+    return $buttons;
+  }
+}
+
+/**
+ * Returns the HTML for the tool bar.
+ * @return the HTML for the tool bar.
+ */
+function lpk_get_toolbar() {
+  return theme('lpk_toolbar', lpk_add_action());
+}
+
+/**
+ * Sets the default input format for the given field
+ * @param $field the field to set the format to
+ * @param $format the machine-readable name of the input format
+ */
+function lpk_set_default_format(&$field, $format) {
+  $field[$field['#language']][0]['#format'] = $format;
+}
+
+/**
+ * Hides the input format selection widget below the field
+ * @param $field the field to hide the controls for
+ */
+function lpk_hide_format_selection(&$field) {
+  $field['#pre_render'][] = '_lpk_hide_format_selection_pre_render';
+}
+
+/**
+ * Returns a new mail object, initialized.
+ * @see Mail
+ */
+function lpk_new_mail() {
+  return new Mail();
+}
+
+/**
+ * Returns the user's real name as a NON-SAFE string.
+ * @param $uid the user's uid
+ * @param $default a fallback to return if the user is not found
+ * @return the user's name or fallback, if user was not found
+ * (or FALSE if $default is not set)
+ */
+function lpk_get_user_fullname($uid, $default = FALSE) {
+  $the_user = user_load($uid);
+  if($the_user->uid && !empty($the_user->field_fullname['und'][0]['value'])) {
+    return $the_user->field_fullname['und'][0]['value'];
+  }
+  return $default;
+}
+
+function lpk_get_user_mail($uid) {
+  $user = user_load($uid);
+  
+  if(!$user->mail) {
+    return FALSE;
+  }
+  
+  $fullname = lpk_get_user_fullname($uid);
+  if($fullname) {
+    return "$fullname <{$user->mail}>";
+  }
+  
+  return $user->mail;
+}
+
+function lpk_format_timespan($start,$end,$year=true,$month=true) {
+	//Form: 27.12.2007 - 4.1.2008
+	$out = date("j.n.Y",$start)." - ".date("j.n.Y",$end);
+	
+	if(date("Y",$start) == date("Y",$end)) {
+		//Form: 27.11 - 3.12.2007
+		$out = date("j.n.",$start)." - ".date("j.n.Y",$end);
+		
+		if(date("n",$start) == date("n",$end)) {
+			//Form: 15.-17.8.2007
+			$out = date("j.",$start)." - ".date("j.n.Y",$end);
+			
+			if(date("j",$start) == date("j",$end)) {
+				//Form: 15.8.2007
+				$out = date("j.n.Y",$start);
+			}
+		}
+	}
+	
+	//Poistetaan vuosi ja kuukausi jos tarpeen
+	
+	if((!$year || !$month) && (date("Y",$start) == date("Y",$end))) {
+		//Vuosi sama ja halutaan poistoon
+		$out = substr($out,0,strlen($out) - 5);
+		if(!$month && (date("n",$start) == date("n",$end))) {
+			//Kuukausi sama ja halutaan poistoon
+			$out = substr($out,0,strlen($out) - strlen(date("n",$start)));		
+		}
+	}
+	
+	return $out;
+}
+
+/**
+ * Returns the title of the node by the given nid. NOTE: this function does
+ * not use any access control, so be careful!
+ * @param $nid the node id (nid) of the node
+ * @return the title of the node
+ */
+function lpk_get_node_title($nid) {
+  return end(db_select('node', 'n')
+          ->fields('n', array('title'))
+          ->condition('nid', $nid)
+          ->execute()
+          ->fetchCol());
+}
+
+/**
+ * Adds the given link to the end of the breadcrumb.
+ * @param $link the link as HTML (e.g. the output of l())
+ */
+function lpk_append_breadcrumb($link) {
+  $crumb = drupal_get_breadcrumb();
+  $crumb[] = $link;
+  drupal_set_breadcrumb($crumb);
+}
+
+/**
+ * Returns the nodes the given user is the owner of.
+ * @param $uid the user's uid
+ * @param $nodetype if this is set, only nodes of the given type are returned
+ * @return an array of node id:s (nids)
+ */
+function lpk_get_user_nids($uid, $nodetype = NULL) {
+  $select = db_select('node', 'n')
+              ->fields('n', array('nid'))
+              ->condition('uid', $uid);
+  if($nodetype != NULL) {
+    $select->condition('type', $nodetype);
+  }
+  
+  return $select->execute()->fetchCol();
+}
+
+/**
+ * Creates a phrase indicating e.g. the number of items.
+ * Uses $num to determine if a singular or plural form should be used.
+ * @param $num the number of items
+ * @param $singular singular form, e.g. "apple"
+ * @param $plural plural form, e.g. "apples"
+ * @return the phrase, e.g. "1 apple" or "3 apples"
+ */
+function lpk_plural($num, $singular, $plural) {
+  if($num == 1) {
+    return '1 ' . $singular;
+  }
+  return $num . ' ' . $plural;
+}
+
+/**
+ * Formats the given time, in seconds from midnight,
+ * to the given format. The format is similar to the format
+ * accepted by date(), but only format strings equal or
+ * less to hours can be used. This function considers all
+ * times as GMT.
+ * @param $time the timestamp since midnight
+ * @param $format the time format in the format accepted by date()
+ * @return the formatted date
+ */
+function lpk_format_time($time, $format = 'H:i') {
+  return gmdate($format, $time);
+}
+
+function lpk_get_users_in_role($rid = DRUPAL_AUTHENTICATED_RID) {
+  $query = db_select('users', 'u')
+    ->fields('u', array('uid'))
+    ->condition('u.uid', 0, '<>');
+  if($rid != DRUPAL_AUTHENTICATED_RID) {
+    //If rid is given, limit results to that role
+    $query->innerJoin('users_roles', 'ur', 'u.uid = ur.uid');
+    $query->condition('ur.rid', $rid, '=');
+  }
+  $res = $query->execute();
+  $uids = array();
+  foreach($res as $user) {
+    $uids[] = $user->uid;
+  }
+  return $uids;
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+//                                                                            //
+// Theme functions                                                            //
+//                                                                            //
+////////////////////////////////////////////////////////////////////////////////
+
+
+/**
+ * Default implementation for theme_lpk_toolbar.
+ * Returns the HTML for the current page's toolbar.
+ * @return the HTML for the tool bar
+ */
+function theme_lpk_toolbar($buttons) {
+  $output = '';
+  if(count($buttons) > 0) {
+    $output .= '<ul class="actionbuttons">';
+    
+    //Add each button as classed list item as link
+    foreach($buttons as $button) {
+      
+      //Make sure classes can be used in the class attribute directly
+      if(isset($button['#classes']) && is_array($button['#classes'])) {
+        $button['#classes'] = implode(' ', $button['#classes']);
+      }
+      
+      $class_str = '';
+      if(isset($button['#classes'])) {
+        $class_str =  ' class="' . $button['#classes'] . '"';
+      }
+      
+      //Add actual link item
+      $output .= '<li' . $class_str . '><a href="' . $button['#path'] . '">' . $button['#title'] . '</a></li>';
+    }
+    
+    $output .= '</ul>';
+  }
+  return $output;
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+//                                                                            //
+// Internal functions                                                         //
+//                                                                            //
+////////////////////////////////////////////////////////////////////////////////
+
+
+/**
+ * A pre render handler for hiding the input format selections. Internal use
+ * only - this should not be called directly.
+ * @param $field the field the handler is called for
+ */
+function _lpk_hide_format_selection_pre_render(&$field) {
+  if (isset($field['format'])) {
+    $field['format']['#access'] = false;
+  }
+  if(!isset($field['value'])) {
+    foreach($field as $key=>&$subfield) {
+      if(is_numeric($key) || substr($key, 0, 1) != '#') {
+        $field[$key] = _lpk_hide_format_selection_pre_render($subfield);
+      }
+    }
+  }
+  return $field;
+}
+
+/**
+ * Redirect users to the leader section front page
+ */
+function _lpk_redirect_user($form, &$form_state) {
+  if(user_access('access leader section')) {
+    $form_state['redirect'] = 'johtajat';
+  }
+}
+
+/**
+ * A function that renders the leader section content array.
+ * @param $content the content array
+ * @return the resulting HTML
+ */
+function _lpk_render_page($content) {
+
+  $str = '<ul id="lpk-leader-page">';
+  
+  foreach($content as $item) {
+    //Check that we have access rights for at least one of the links
+    foreach($item['#links'] as $link) {
+      if(isset($link['#access']) && user_access($link['#access'])) {
+        $str .= _lpk_render_page_item($item);
+        break; //Only add the item once
+      }
+    }
+  }
+  
+  $str .= '</ul>';
+
+  return $str;
+}
+  
+function _lpk_render_page_item($item) {
+  $str = '<li class="' . check_plain($item['#class']) . "\">\n";
+  
+  $str .= '<h2>' . check_plain($item['#title']) . "</h2>\n";
+  
+  if(!empty($item['#description'])) {
+    $str .= '<p>' . check_plain($item['#description']) . "</p>\n";
+  }
+  
+  if(count($item['#links'])) {
+    $str .= '<ul class="links">';
+    foreach($item['#links'] as $link) {
+      if(!isset($link['#access']) || user_access($link['#access'])) {
+        $str .= '<li>' . l($link['#title'], $link['#path']) . '</li>';
+      }
+    }
+    $str .= "</ul>\n";
+  }
+  
+  $str .= "</li>\n";
+  
+  return $str;
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+//                                                                            //
+// Utility class definitions [may be moved]                                   //
+//                                                                            //
+////////////////////////////////////////////////////////////////////////////////
+
+
+class Mail {
+  private $from = NULL;
+  private $headers = array();
+  
+  private $subject;
+  private $body;
+  
+  private $recipientRoles = array();
+  private $recipientUsers = array();
+  private $recipientAddresses = array();
+  
+  function __construct() {
+  }
+
+  function addRoleRecipients($rid) {
+    $this->recipientRoles[] = $rid;
+    return $this;
+  }
+  
+  function addUserRecipient($uid) {
+    $this->recipientUsers[] = $uid;
+    return $this;
+  }
+  
+  function addAddressRecipient($address) {
+    if(!in_array($address, $this->recipientAddresses)) {
+      $this->recipientAddresses[] = $address;
+    }
+    return $this;
+  }
+  
+  function setHeader($key, $value) {
+    $this->headers[$key] = $value;
+  }
+  
+  function setFrom($from) {
+    $this->from = $from;
+    return $this;
+  }
+
+  function setSubject($subject) {
+    $this->subject = $subject;
+    return $this;
+  }
+  
+  function setBody($body) {
+    $this->body = $body;
+    return $this;
+  }
+  
+  function send() {
+    
+    //Resolve roles and users to emails
+    $this->resolve();
+    
+    //Send errors to site email by default
+    $this->setHeader('Errors-To', variable_get('site_mail', ini_get('sendmail_from')));
+    
+    $params = array(
+      'subject' => $this->subject,
+      'body' => $this->body,
+      'headers' => $this->headers
+    );
+    
+    $msg = drupal_mail('lpk', 'default', implode(', ',$this->recipientAddresses),
+                            language_default(), $params, $this->from, TRUE);
+    
+    watchdog('Outgoing mail', 'Mail sent<br/><pre>' . check_plain(var_export($msg, TRUE)) . '</pre>');
+    
+    //Confirm that sending succeeded
+    return $msg['result'];
+  }
+  
+  private function resolve() {
+    $this->resolveRoleRecipients();
+    $this->resolveUserRecipients();
+  }
+  
+  private function resolveRoleRecipients() {
+    foreach ($this->recipientRoles as $rid) {
+      $this->resolveUserRecipients(lpk_get_users_in_role($rid));      
+    }
+    $this->recipientRoles = array();
+    
+  }
+  
+  private function resolveUserRecipients($uids = NULL) {
+    if ($uids == NULL) {
+      $uids = $this->recipientUsers;
+      $this->recipientUsers = array();
+    }
+    
+    //Users are statically cached so it's ok to go through them like this
+    $users = user_load_multiple($uids);
+    
+    foreach($users as $user) {
+      $address = lpk_get_user_mail($user->uid);
+      $this->addAddressRecipient($address);
+    }
+  }
+
+}

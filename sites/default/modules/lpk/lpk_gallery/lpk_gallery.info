@@ -1,0 +1,9 @@
+; $Id$
+name = "LPK kuvagalleria"
+description = "Kuvagalleria"
+core = 7.x
+package = LPK
+dependencies[] = lpk
+stylesheets[screen][] = fancybox2/source/jquery.fancybox.css
+scripts[] = fancybox2/source/jquery.fancybox.js
+scripts[] = lpk_gallery.js

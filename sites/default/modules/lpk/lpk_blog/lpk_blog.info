@@ -1,0 +1,6 @@
+; $Id$
+name = "LPK blogi"
+description = "Blogin arkisto"
+core = 7.x
+package = LPK
+dependencies[] = lpk

@@ -1,0 +1,343 @@
+<?php
+//$Id$
+
+
+/**
+* This module handles saving of bookings. It validates the bookings and
+* sends the necessary mails.
+*/
+
+
+////////////////////////////////////////////////////////////////////////////////
+//                                                                            //
+// Define constants                                                           //
+//                                                                            //
+////////////////////////////////////////////////////////////////////////////////
+
+
+define('LPK_BOOKINGS_DATE_FIELDNAME','field_booking_dates'); //Notice that the field name is hardcoded in some places
+
+//Types of mails to send
+define('LPK_BOOKINGS_MAIL_INSERT', 0);
+define('LPK_BOOKINGS_MAIL_UPDATE', 1);
+define('LPK_BOOKINGS_MAIL_DELETE', 2);
+
+
+////////////////////////////////////////////////////////////////////////////////
+//                                                                            //
+// Drupal hooks                                                               //
+//                                                                            //
+////////////////////////////////////////////////////////////////////////////////
+
+
+/**
+* Implements hook_permission().
+*/
+function lpk_bookings_permission() { 
+  $perms = array();
+  
+  $perms['access booking nodes'] = array(
+    'title' => t('Access booking nodes'),
+  );
+  
+  return $perms;
+}
+
+/**
+ * Implements hook_node_access(). Prevents access to booking nodes
+ * from unauthorized users.
+ * @param $node the node to check
+ * @param $op the operation to perform
+ * @param $account the user to check access for
+ */
+function lpk_bookings_node_access($node, $op, $account) { 
+  if(is_object($node) && $node->type == 'booking' && $op == 'view') {
+    if(user_access('access booking nodes', $account)) {
+      return NODE_ACCESS_ALLOW;
+    } else {
+      return NODE_ACCESS_DENY;
+    }
+  }
+  return NODE_ACCESS_IGNORE;
+}
+ 
+/**
+ * Implements hook_node_validate(). Validates the added booking nodes. Checks
+ * that the end date is in the future and that there aren't any overlapping bookings
+ */
+function lpk_bookings_node_validate($node, $form, $form_state) {
+
+  if($node->type != 'booking') {
+    return;
+  }
+
+  //Separate variable so we can append it to differentiate field names for error messages
+  $field = LPK_BOOKINGS_DATE_FIELDNAME;
+  
+  $items = field_get_items('node', $node, LPK_BOOKINGS_DATE_FIELDNAME);
+  
+  //Get times
+  $from = $items[0]['value'];
+  $to =   $items[0]['value2'];
+  
+  //Check that we're not creating a booking in the past (uses node creation date
+  //to allow editing later)
+  if($to < $node->created) {
+    form_set_error(LPK_BOOKINGS_DATE_FIELDNAME.'][' . $node->language . '][0][value2', 'Varauksesi ajankohta on jo mennyt - tarkista päättymisaika.');
+  }
+  
+  //Check that there aren't any overlapping bookings
+  $results = lpk_bookings_get_nids_between($from, $to);
+
+  foreach($results as $nid) {
+    //If there are other nodes that overlap the date, show error for each
+    if($nid != $node->nid) {
+      form_set_error($field, get_overlapping_node_error($nid));
+      //Make field unique to allow more than one error message being shown
+      $field .= "_";
+    }
+  }
+}
+
+/**
+ * Implements hook_node_insert. Sends mail about booking creation.
+ */
+function lpk_bookings_node_insert($node) {
+  if($node->type == 'booking') {
+    lpk_bookings_mail_booking($node, LPK_BOOKINGS_MAIL_INSERT);
+  }
+}
+
+/**
+ * Implements hook_node_update. Sends mail about booking changes.
+ */
+function lpk_bookings_node_update($node) {
+  if($node->type == 'booking') {
+    lpk_bookings_mail_booking($node, LPK_BOOKINGS_MAIL_UPDATE);
+  }
+}
+
+/**
+ * Implements hook_node_delete. Sends mail about booking removal.
+ */
+function lpk_bookings_node_delete($node) {
+  if($node->type == 'booking') {
+    lpk_bookings_mail_booking($node, LPK_BOOKINGS_MAIL_DELETE);
+  }
+}
+
+/**
+ * Implements hook_form_FORM_ID_alter(). Sets default values for time of day,
+ * adds help tests, sets input format as plain text and hides it's selection
+ * and adds a redirect to the booking list.
+ */
+function lpk_bookings_form_booking_node_form_alter(&$form, &$form_state, $form_id) {
+
+  //Set default values for times
+  if(empty($form['nid']['#value'])) {
+    $form[LPK_BOOKINGS_DATE_FIELDNAME][$form[LPK_BOOKINGS_DATE_FIELDNAME]['#language']][0]['#default_value']['value']  = date('Y-m-d 12:00:00');
+    $form[LPK_BOOKINGS_DATE_FIELDNAME][$form[LPK_BOOKINGS_DATE_FIELDNAME]['#language']][0]['#default_value']['value2'] = date('Y-m-d 11:59:00');
+  }
+  
+  //Set help texts
+  $form['title']['#description'] = 'Esimerkki: Koala-vartion retki';
+  $form['body'][$form['#node']->language][0]['#description'] = 'Lisätietoja kämpän isännälle ja lippukunnanjohtajalle. Jos olet esimerkiksi varaamassa ' . 
+      'kämppää jonkun toisen henkilön puolesta, kannattaa siitä ilmoittaa tässä kentässä.';
+      
+  //Set default content type as plain text and hide the input format selection
+  lpk_set_default_format($form['body'], 'plain_text');
+  lpk_hide_format_selection($form['body']);
+  
+  //redirect to bookings list
+  $form['actions']['submit']['#submit'][] = '_lpk_bookings_handle_submit';
+}
+
+/**
+ * Implements hook_form_FORM_ID_alter(). Redirects the node deletion form
+ * to the bookings list.
+ */
+function lpk_bookings_form_node_delete_confirm_alter(&$form, &$form_state, $form_id) {
+  if($form['#node']->type == 'booking') {
+    $form['#submit'][] = '_lpk_bookings_handle_submit';
+  }
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+//                                                                            //
+// Public utility functions                                                   //
+//                                                                            //
+////////////////////////////////////////////////////////////////////////////////
+
+
+/**
+ * Returns the nids of the booking nodes that overlap the given timespan.
+ * @param $from the timespan start date as unix timestamp
+ * @param $to the timespan end date as unix timestamp
+ */
+function lpk_bookings_get_nids_between($from, $to) {
+  
+  //Select overlapping bookings
+  try {
+    $results = db_select('field_data_'.LPK_BOOKINGS_DATE_FIELDNAME, 'f')
+                ->fields('f', array('entity_id'))
+                ->condition('bundle', 'booking')
+                ->condition('deleted', 0)
+                ->condition(LPK_BOOKINGS_DATE_FIELDNAME.'_value', $to, '<=')
+                ->condition(LPK_BOOKINGS_DATE_FIELDNAME.'_value2', $from, '>=')
+                ->orderBy(LPK_BOOKINGS_DATE_FIELDNAME.'_value', 'ASC')
+                ->execute()
+                ->fetchCol();
+  } catch(PDOException $exception) {
+    //If there was a problem, return an empty array
+    return array();
+  }
+  return $results;
+  
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+//                                                                            //
+// Internal functions: validation and concurrency checking                    //
+//                                                                            //
+////////////////////////////////////////////////////////////////////////////////
+
+
+/**
+ * A submit handler that redirects a form to the booking list.
+ * @param $form FAPI form array
+ * @param $form_state FAPI form state array
+ */
+function _lpk_bookings_handle_submit($form, &$form_state) {
+  $form_state["redirect"] = "johtajat/kampan-varaus";
+}
+
+/**
+* Returns an error message notifying the user that his booking is overlapping
+* with the node $nid.
+* @param $nid the node nid
+*/
+function get_overlapping_node_error($nid) {
+  $node = node_load($nid);
+
+  //Overlapping booking
+  $str = "Varauksesi on päällekkäin varauksen " . l($node->title, "node/" . $node->nid) . " kanssa. ";
+  
+  //Reserved for user
+  $str .= "(varaaja: " . l($node->name, "user/" . $node->uid) . ", ajankohta: ";
+  
+  //Time
+  $items = field_get_items('node', $node, LPK_BOOKINGS_DATE_FIELDNAME);
+  $from = $items[0]['value'];
+  $to =   $items[0]['value2'];
+  $str .= date("d.m.Y \k\l\o H:i", $from) . " - ";
+  $str .= date("d.m.Y \k\l\o H:i", $to) . ")";
+  
+  return $str;
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+//                                                                            //
+// Internal functions: mailing the booking info                               //
+//                                                                            //
+////////////////////////////////////////////////////////////////////////////////
+
+/**
+ * Sends an email about booking addition, editing and deletion to the necessary
+ * user groups and the person who created the booking.
+ * @param $node the booking node that was added, edited or deleted
+ * @param $type the type of event: can be LPK_BOOKINGS_MAIL_INSERT,
+ * LPK_BOOKINGS_MAIL_UPDATE or LPK_BOOKINGS_MAIL_DELETE.
+ */
+function lpk_bookings_mail_booking($node, $type) {
+  global $user;
+  
+  //Get timespan
+  $items = field_get_items('node', $node, LPK_BOOKINGS_DATE_FIELDNAME);
+  $from = $items[0]['value'];
+  $to =   $items[0]['value2'];
+  
+  //Message subject and body
+  $head = '';
+  $body = '';
+  
+  //Assemble subject line
+  
+  if($type == LPK_BOOKINGS_MAIL_INSERT) {
+    $head = "Uusi varaus: ";
+  } else if($type == LPK_BOOKINGS_MAIL_UPDATE) {
+    $head = "Varaus muuttunut: ";
+  } else if($type == LPK_BOOKINGS_MAIL_DELETE) {
+    $head = "Varaus poistettu: ";
+  }
+  $head .= $node->title . ' (';
+  $head .= date('d.m.Y', $from) . ' - ' . date('d.m.Y', $to) . ')';
+  
+  //Assemble body
+  
+  $body .= "Varaus " . $node->title . " on ";
+  
+  if($type == LPK_BOOKINGS_MAIL_INSERT) {
+    $body .= "luotu. Varauksen loi ";
+  } else if($type == LPK_BOOKINGS_MAIL_UPDATE) {
+    $body .= "muuttunut. Varausta muokkasi ";
+  } else if($type == LPK_BOOKINGS_MAIL_DELETE) {
+    $body .= "poistettu. Varauksen poisti ";
+  }
+  
+  $body .= $user->name . ".\n\n";
+  
+  $body .= "Varauksen ajantasaiset tiedot\n\n";
+  $body .= "Varauksen syy: " . $node->title . "\n";
+  $body .= "Ajankohta: " . date('d.m.Y \k\l\o H:i', $from) . ' - ' . date('d.m.Y \k\l\o H:i', $to) . "\n";
+  $body .= "Varaaja: " . $node->name . "\n";
+  if(isset($node->body['fi'][0]['value'])) {
+    $body .= "Lisätiedot:\n" . $node->body['fi'][0]['value'] . "\n\n";
+  }
+  
+  //Add link to booking - unless it was deleted
+  if($type != LPK_BOOKINGS_MAIL_DELETE) {
+    $body .= "Linkki varaukseen (vaatii kirjautumisen): " . url('node/' . $node->nid, array('absolute' => TRUE));
+  }
+  
+  //Send the mail
+  
+  $success = lpk_new_mail()
+            ->addRoleRecipients(LPK_ROLE_ADMIN)
+            ->addRoleRecipients(LPK_ROLE_COTTAGEHOST)
+            ->addUserRecipient($node->uid)
+            ->setSubject($head)
+            ->setBody($body)
+            ->send();
+  
+  //Show status or error message depending on if the send succeeded
+  
+  $evt_text = '';
+  if($type == LPK_BOOKINGS_MAIL_INSERT) {
+    $evt_text = "varauksesta";
+  } else if($type == LPK_BOOKINGS_MAIL_UPDATE) {
+    $evt_text = "varauksen muuttumisesta";
+  } else if($type == LPK_BOOKINGS_MAIL_DELETE) {
+    $evt_text = "varauksen poistamisesta";
+  }
+  
+  if($success) {
+    $message = "Tieto $evt_text on lähetetty kämpän isännälle ja lippukunnanjohtajalle sekä kopiona ";
+    
+    //If the person editing is the one booking, show a more logical message
+    if($node->uid == $user->uid) {
+      $message .= 'sinulle itsellesi.';
+    } else {
+      $message .= 'varauksen tekijälle.';
+    }
+    
+    drupal_set_message($message, 'status');
+  } else {
+    $message = "Teknisen virheen vuoksi ilmoitusta $evt_text ei voitu " .
+      'lähettää lippukunnanjohtajalle eikä kämpän isännälle. ' .
+      "Ilmoita $evt_text heille itse.";
+    drupal_set_message($message, 'error');
+  }
+}

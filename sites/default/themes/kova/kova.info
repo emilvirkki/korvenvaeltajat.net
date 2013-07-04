@@ -1,0 +1,9 @@
+name = Korven Vaeltajat
+description = Korven Vaeltajien nettisivujen oletusteema
+package = LPK
+version = 1.0
+core = 7.x
+stylesheets[screen][] = base.css
+stylesheets[screen][] = screen.css
+stylesheets[all][] = system.menus.css
+stylesheets[print][] = print.css

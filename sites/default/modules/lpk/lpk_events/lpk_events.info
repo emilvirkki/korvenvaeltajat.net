@@ -1,0 +1,6 @@
+; $Id$
+name = "LPK tapahtumakalenteri"
+description = "Tapahtumakalenteri"
+core = 7.x
+package = LPK
+dependencies[] = lpk

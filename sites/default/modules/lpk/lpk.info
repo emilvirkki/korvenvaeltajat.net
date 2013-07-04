@@ -1,0 +1,6 @@
+; $Id$
+name = "LPK api & tweaks"
+description = "Pieniä säätöjä ja jaettua koodia LPK-moduuleille"
+core = 7.x
+package = LPK
+scripts[] = lpk.js

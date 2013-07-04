@@ -1,0 +1,121 @@
+<?php
+//$Id$
+
+/*
+ * Tämä on väliaikainen versio sähköpostilistoista - se osaa
+ * vain lähettää uutisia ja erillisiä massaposteja kaikille käyttäjille.
+ * 
+ * Tätä moduulia tullaan myöhemmin laajentamaan siten, että
+ * mahdollistetaan mailaus ei käyttäjäryhmille + nodetyypeille
+ */
+
+define('LPK_MAIL_PREFIX', '[Korven Vaeltajat] ');
+
+function lpk_mail_permission() {
+  $perms = array();
+  
+  $perms['send emails'] = array(
+    'title' => t('Send emails to email lists'),
+  );
+  
+  return $perms;
+}
+
+/**
+ * Implements hook_menu().
+ */
+function lpk_mail_menu() {
+  $items = array();
+  $items['johtajat/sahkoposti'] = array(
+    'title' => 'Lähetä joukkosähköposti',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('lpk_mail_mail_form'),
+    'access callback' => 'user_access',
+    'access arguments' => array('send emails'),
+    'description' => 'Lähetä sähköpostia kaikille johtajille.',
+  );
+  return $items;
+  
+}
+
+/**
+* Implements hook_form_BASE_FORM_ID_alter().
+*/
+function lpk_mail_form_article_node_form_alter(&$form, &$form_state, $form_id) {
+  $is_new = !isset($form_state['node']->nid) || empty($form_state['node']->nid);
+  if($is_new && user_access('send emails')) {
+    $form['lpk_mail_all_users'] = array(
+      '#type' => 'checkbox',
+      '#title' => 'Lähetä sähköpostina kaikille johtajille',
+      '#weight' => 1,
+      '#default_value' => TRUE,
+    );
+ 
+    $form['actions']['submit']['#submit'][] = '_lpk_mail_article_handler';
+  }
+}
+
+function lpk_mail_mail_form($form, $form_state) {
+  
+  $form['intro'] = array(
+    '#markup' => 'Lähetä sähköposti kaikille johtajille.'
+  );
+  
+  $form['subject'] = array(
+    '#type' => 'textfield',
+    '#title' => 'Otsikko',
+    '#required' => TRUE,
+  );
+  
+  $form['body'] = array(
+    '#type' => 'textarea',
+    '#title' => 'Sisältö',
+    '#required' => TRUE,
+    '#rows' => 20,
+  );
+  
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => 'Lähetä',
+  );
+  
+  $form['#submit'][] = '_lpk_mail_handle_mail_form';
+  
+  return $form;
+}
+
+function _lpk_mail_handle_mail_form(&$form, &$form_state) {
+  $subject = $form_state['values']['subject'];
+  $body = strip_tags($form_state['values']['body']);
+  $form_state['redirect'] = 'johtajat';
+  lpk_mail_all_users($subject, $body);
+}
+
+function _lpk_mail_article_handler($form, $form_state) {
+  if($form_state['values']['lpk_mail_all_users']) {
+    $subject = $form_state['values']['title'];
+    $body = drupal_html_to_text($form_state['values']['body']['fi'][0]['value']);
+    $body = preg_replace('/(?:(?:\r\n|\r|\n)\s*){2}/s', "\n\n", $body);
+    lpk_mail_all_users($subject, $body);
+  }
+}
+
+function lpk_mail_all_users($subject, $body) {
+  global $user;
+  
+  $subject = LPK_MAIL_PREFIX . $subject;
+  
+  $success = lpk_new_mail()
+    ->addRoleRecipients(DRUPAL_AUTHENTICATED_RID)
+    ->setFrom(lpk_get_user_mail($user->uid))
+    ->setSubject($subject)
+    ->setBody($body)
+    ->send();
+    
+  if($success) {
+    drupal_set_message('Sähköpostin lähetys onnistui');
+  } else {
+    drupal_set_message('Tekninen ongelma: sähköpostia ei voitu lähettää', 'error');
+  }
+
+}

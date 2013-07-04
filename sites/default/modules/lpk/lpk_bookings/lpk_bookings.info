@@ -1,0 +1,6 @@
+; $Id$
+name = "LPK varaukset"
+description = "Varausjärjestelmä"
+core = 7.x
+package = LPK
+dependencies[] = lpk

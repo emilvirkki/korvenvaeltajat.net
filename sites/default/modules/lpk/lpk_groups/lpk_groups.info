@@ -1,0 +1,6 @@
+; $Id$
+name = "LPK ryhmät"
+description = "Ryhmälomakkeen säädöt"
+core = 7.x
+package = LPK
+dependencies[] = lpk

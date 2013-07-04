@@ -1,0 +1,110 @@
+body {
+  font-family: Garamond, serif;
+  line-height: 1.5em;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: arial, sans-serif;
+  font-weight: normal;
+  margin: 1em 0 0.25em;
+}
+
+#skip-link, #header, #nav, #topimg, .messages, #sidebar, #footer ul,
+ul.links, div.links, .feed-icon {
+  display: none;
+}
+
+h1 a, h2 a, h3 a {
+  color: black;
+  text-decoration: none;
+}
+
+#footer {
+  padding: 0.4em 0 0;
+  margin: 0.4em 0 0;
+  border-top: 1px solid #CCC;
+}
+
+#footer strong {
+  font-weight: normal;
+}
+
+#breadcrumb {
+  padding: 0 0 1em;
+  margin: 0 0 1em;
+  border-bottom: 1px solid #CCC;
+}
+
+#breadcrumb a {
+  color: black;
+  text-decoration: none;
+}
+
+#block-views-news-block .content h2,
+#block-views-blogi-block-1 .content h2,
+h3 {
+  font-size: 1.1em;
+}
+
+#block-views-news-block > h2,
+#block-views-blogi-block-1 > h2 {
+  border-bottom: 1px solid #CCC;
+}
+
+.submitted {
+  margin: 1em 0;
+  font-size: 0.85em;
+  font-style: italic;
+}
+
+.lpk-gallery-images, .lpk-gallery-images li,
+.lpk-gallery-galleries, .lpk-gallery-galleries li {
+  list-style: none;
+  margin: 0 0 1em;
+  padding: 0;
+  clear: both;
+  overflow: auto;
+}
+
+.lpk-gallery-galleries img {
+  float: left;
+  margin-right: 1em;
+}
+
+input, select {
+  padding: 0.5em;
+  border: 1px solid black;
+}
+
+table {
+  width: 100%;
+  margin: 1em 0;
+}
+
+td.views-field-field-dates {
+  width: 8em;
+}
+
+img {
+  float: right;
+  margin: 1em 0 1em 1em;
+}
+
+img.left {
+  float: left;
+  margin: 1em 1em 1em 0;
+}
+
+dt {
+  font-weight: bold;
+}
+
+dd {
+  margin: 0;
+}
+
+.node-group.node-teaser {
+  margin: 1em 0;
+  border: 1px solid #CCC;
+  padding: 0 2em;
+}
