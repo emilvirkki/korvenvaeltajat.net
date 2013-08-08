@@ -787,9 +787,16 @@ function lpk_gallery_create_image($gallery, $title, $file) {
     $node->field_exifdate['fi'][0]['value'] = 1;
   }
   
+  //Get exif orientation before exif data is overridden by scaling
+  $orientation = _lpk_gallery_get_image_rotation($file);
+  
   //Scale the image down - this must be done after determining
   //the creation time, as the scaling loses EXIF data
   _lpk_gallery_scale_image($file);
+  
+  if($orientation != 0) {
+    _lpk_gallery_rotate_image($file, -$orientation);
+  }
   
   node_save($node);
   
@@ -1370,6 +1377,43 @@ function _lpk_gallery_access($adminperm, $ownperm, $gallery_id) {
   
   return FALSE;
   
+}
+
+function _lpk_gallery_rotate_image($file, $orientation) {
+  $image = image_load($file->uri);
+  image_rotate($image, $orientation);
+  image_save($image);
+}
+
+function _lpk_gallery_get_image_rotation($file) {
+  if(!function_exists('exif_read_data')) {
+    return 0;
+  }
+  
+  $path = drupal_realpath($file->uri);
+  $exif = exif_read_data($path);
+  $orientation_code = $exif['Orientation'];
+  $orientation = 0;
+  
+  switch ($orientation_code) {
+    case 3:
+      $orientation = 180;
+      break;
+    
+    case 6:
+      $orientation = -90;
+      break;
+    
+    case 8:
+      $orientation = 90;
+      break;
+    
+    default:
+      $orientation = 0;
+      break;
+  }
+  
+  return $orientation;
 }
 
 /**
