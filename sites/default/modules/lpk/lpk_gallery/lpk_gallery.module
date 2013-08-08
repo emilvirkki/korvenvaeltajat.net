@@ -40,6 +40,8 @@ define('LPK_GALLERY_GALLERIES', 1);
  */
 define('LPK_GALLERY_IMAGES_AND_GALLERIES', 2);
 
+define('LPK_GALLERY_FILE_ROOT', 'public://galleria');
+
 /**
  * Implements hook_cron(). Creates a new gallery for the current year if one does not exist.
  */
@@ -143,6 +145,13 @@ function lpk_gallery_menu() {
     'title' => 'Lisää kuvia',
     'page callback' => 'drupal_get_form',
     'page arguments' => array('lpk_gallery_add_images', 2),
+    'access arguments' => array('create gallery_image content'),
+  );
+  
+  $items['johtajat/galleria/%/lisaa-kuvia/ajax'] = array(
+    'title' => 'Lisää kuvia',
+    'page callback' => 'lpk_gallery_ajax_upload_image',
+    'page arguments' => array(2),
     'access arguments' => array('create gallery_image content'),
   );
   
@@ -548,6 +557,9 @@ function lpk_gallery_gallery_submit($form, &$form_state) {
  */
 function lpk_gallery_add_images($form, $form_State, $galleryid) {
 
+  //Add better upload widget
+  drupal_add_js(drupal_get_path('module', 'lpk_gallery') . '/lpk_gallery_upload.js');
+
   $gallery = taxonomy_term_load($galleryid);
   
   drupal_set_title('Lisää kuvia galleriaan ' . $gallery->name);
@@ -599,15 +611,39 @@ function lpk_gallery_add_images($form, $form_State, $galleryid) {
  * @param $form_stati the FAPI form state array
  */
 function lpk_gallery_add_images_submit($form, &$form_state) {
-
-  $galleryroot = 'public://galleria';
- 
   //Add the uploaded images
   for($i = 0; $i < LPK_GALLERY_NUM_FORM_IMAGES; $i++) {
-    $file = file_save_upload('img-' . $i, array('file_validate_extensions', LPK_GALLERY_ALLOWED_EXTENSIONS), $galleryroot);
+    $file = file_save_upload('img-' . $i, array('file_validate_extensions' => array(LPK_GALLERY_ALLOWED_EXTENSIONS)), LPK_GALLERY_FILE_ROOT);
     lpk_gallery_add_image($form['#lpk_galleryid'], $file);
   }
   
+}
+
+/**
+ * Creates an image in the given gallery and returns image info as JSON.
+ */
+function lpk_gallery_ajax_upload_image($gallery_id) {
+  $file = file_save_upload('img-1', array('file_validate_extensions' => array(LPK_GALLERY_ALLOWED_EXTENSIONS)), LPK_GALLERY_FILE_ROOT);
+  $node = lpk_gallery_add_image($gallery_id, $file);
+  $result = array('error' => 'Tuntematon virhe.');
+  
+  if($node) {
+    //Saved successfully
+    $result = array(
+      "nid" => $node->nid,
+      "title" => $node->title,
+      "thumbnail" => image_style_url('small_square', $node->field_imagefield['fi'][0]['uri'])
+    );
+  } else {
+    //Save failed - if file was not saved it was likely a validation error
+    if($file === FALSE) {
+      $result = array('error' => 'Tiedoston tyyppi ei kelpaa. Tiedoston tulee olla JPEG, GIF tai PNG-kuva.');
+    }
+  }
+  //Reset the messages - otherwise thery're shown when the user opens a page
+  $messages = drupal_get_messages();
+  print json_encode($result);
+  drupal_exit();
 }
 
 /**
@@ -702,7 +738,6 @@ function lpk_gallery_add_image($gallery, $file) {
   
   //Check that upload succeeded
   if($file === FALSE) {
-    drupal_set_message('Kuvan ' . $file->filename . ' tiedostopääte ei kelpaa. Sallitut päätteet ovat: ' . LPK_GALLERY_ALLOWED_EXTENSIONS, 'error');
     watchdog('gallery', 'Image ' . $file->filename . ' failed extension check');
     return;
   } else if($file == NULL) {
@@ -724,8 +759,8 @@ function lpk_gallery_add_image($gallery, $file) {
   
   $title = preg_replace('/\.jpe?g$/i', '', $file->filename);
   
-  //Add actual image node'
-  lpk_gallery_create_image($gallery, $title, $file);
+  //Add actual image node
+  return lpk_gallery_create_image($gallery, $title, $file);
 }
 
 /**
@@ -765,6 +800,7 @@ function lpk_gallery_create_image($gallery, $title, $file) {
     drupal_set_message('Kuvan <em>' . $file->filename . '</em> tallennus epäonnistui. Jos ongelma ei häviä, ilmoita asiasta ylläpitoon.', 'error');
   }
   
+  return $node;
 }
 
 /**
