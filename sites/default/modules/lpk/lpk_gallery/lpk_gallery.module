@@ -529,8 +529,10 @@ function lpk_gallery_gallery_submit($form, &$form_state) {
   $adding_new = empty($term->tid);
   
   $message = 'Päivitettiin';
+  $log_message = 'Updated';
   if($adding_new) {
     $message = 'Luotiin';
+    $log_message = 'Created';
   }
   drupal_set_message($message . ' galleria <em>' . check_plain($form_state['values']['name']) . '</em>.');
   
@@ -547,6 +549,11 @@ function lpk_gallery_gallery_submit($form, &$form_state) {
   } else {
     $form_state['redirect'] = 'johtajat/galleria/' . $term->tid;
   }
+  
+  watchdog('gallery', $log_message . ' gallery @name (@tid)', array(
+    '@name' => $term->name,
+    '@tid' => $term->tid
+  ));
 }
 
 /**
