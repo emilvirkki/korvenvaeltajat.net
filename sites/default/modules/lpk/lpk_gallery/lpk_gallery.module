@@ -1300,7 +1300,9 @@ function _lpk_gallery_gallery_item($gallery) {
  * @return the html for the list item
  */
 function _lpk_gallery_image_item($image) {
-  $content = lpk_gallery_get_image_html($image, 'small_square');
+  $thumb_url = image_style_url('small_square', $image->field_imagefield['fi'][0]['uri']);
+  $large_url = image_style_url('large', $image->field_imagefield['fi'][0]['uri']);
+  $content = '<img src="' . $thumb_url . '" data-large="' . $large_url . '" alt="">';
   $content .= '<span class="gallery-image">' . check_plain($image->title) . '</span>';
   
   $output  = '<li>';
