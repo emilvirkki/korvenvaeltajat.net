@@ -1,6 +1,7 @@
 jQuery(function($) {
   var uploadField;
   var galleryId = parseInt(location.pathname.split('/')[3]);
+  var ieWorkaroundFirstUpload = false;
   
   function setup() {
     //UI
@@ -12,12 +13,24 @@ jQuery(function($) {
     
     //File selection
     $("#lpk-gallery-add-images a").click(function(event) {
+      ieWorkaroundFirstUpload = true;
       event.preventDefault && event.preventDefault();
       uploadField.click();
     });
-    uploadField.change(function(evt) {
-      uploadFiles(this.files);
-    });
+    //IE-specific upload handler for select-and-upload - onchange won't trigger in IE < 11
+    if(uploadField[0].attachEvent) {
+      uploadField[0].onpropertychange = function(event) {
+        //IE triggers onpropertychange several times...
+        if(window.event.propertyName == 'value' && ieWorkaroundFirstUpload) {
+          uploadFiles(this.files);
+          ieWorkaroundFirstUpload = false;
+        }
+      };
+    } else {
+      uploadField.change(function(evt) {
+        uploadFiles(this.files);
+      });
+    }
     
     //Drag and drop
     var timeout;
