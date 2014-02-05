@@ -889,8 +889,8 @@ ul.links li {
 
 /* Front page newsletter subscription */
 
-.front .block-webform .content {
-  padding: 6px 10px 0;
+.front .block-webform .node {
+  padding: 10px 10px 0;
 }
 
 .front .block-webform .content h2 {
