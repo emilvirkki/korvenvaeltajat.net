@@ -886,3 +886,17 @@ ul.links li {
 .actionbuttons .return a {
   background-image: url(icons/return.png);
 }
+
+/* Front page newsletter subscription */
+
+.front .block-webform .content {
+  padding: 6px 10px 0;
+}
+
+.front .block-webform .content h2 {
+  display: none;
+}
+
+.front .block-webform .form-text {
+  width: 98%;
+}
