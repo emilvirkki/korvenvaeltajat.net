@@ -453,7 +453,8 @@ function lpk_add_action($button = NULL) {
  * @return the HTML for the tool bar.
  */
 function lpk_get_toolbar() {
-  return theme('lpk_toolbar', lpk_add_action());
+  $args = array('buttons' => lpk_add_action());
+  return theme('lpk_toolbar', $args);
 }
 
 /**
@@ -644,7 +645,8 @@ function lpk_get_users_in_role($rid = DRUPAL_AUTHENTICATED_RID) {
  * Returns the HTML for the current page's toolbar.
  * @return the HTML for the tool bar
  */
-function theme_lpk_toolbar($buttons) {
+function theme_lpk_toolbar($args) {
+  $buttons = $args['buttons'];
   $output = '';
   if(count($buttons) > 0) {
     $output .= '<ul class="actionbuttons">';
