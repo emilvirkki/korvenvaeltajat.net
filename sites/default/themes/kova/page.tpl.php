@@ -89,7 +89,7 @@
 
     <?php if ($is_front): ?>
       <?php
-        $path = 'sites/default/files/kova/topbg.jpg'; 
+        $path = 'sites/default/themes/kova/gfx/top.jpg'; 
         print theme_image(array(
           'path'=>$path,
           'attributes'=>array('id'=>'topimg', 'alt'=>''),
