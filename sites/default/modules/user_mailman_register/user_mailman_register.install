@@ -21,21 +21,21 @@ function user_mailman_register_schema() {
       ),
       'name' => array(
         'type' => 'varchar',
-        'length' => 48,
+        'length' => 255,
         'not null' => TRUE,
         'default' => '',
         'description' => t('Mailing List name'),
       ),
       'command' => array(
         'type' => 'varchar',
-        'length' => 72,
+        'length' => 255,
         'not null' => TRUE,
         'default' => '',
         'description' => t("Mailing List 'request' address"),
       ),
       'admin' => array(
         'type' => 'varchar',
-        'length' => 48,
+        'length' => 255,
         'default' => '',
         'description' => t("Mailing List 'admin' address"),
       ),
@@ -53,81 +53,82 @@ function user_mailman_register_schema() {
       ),
       // User Mailman Register fields
       'webadmin' => array(
-        'type' => 'varchar', 
-        'length' => 255, 
+        'type' => 'varchar',
+        'length' => 255,
+        'default' => '',
         'description' => t("Mailman web url"),
       ),
       'webpass' => array(
-        'type' => 'varchar', 
-        'length' => 255, 
+        'type' => 'varchar',
+        'length' => 255,
+        'default' => '',
         'description' => t("Mailman admin password"),
       ),
       'version' => array(
-        'type' => 'int', 
-        'size' => 'tiny', 
-        'not null' => TRUE, 
-        'default' => 0, 
+        'type' => 'int',
+        'size' => 'tiny',
+        'not null' => TRUE,
+        'default' => 0,
         'description' => t("Mailman version"),
       ),
       'user_invite' => array(
-        'type' => 'int', 
-        'size' => 'tiny', 
-        'not null' => TRUE, 
-        'default' => 0, 
+        'type' => 'int',
+        'size' => 'tiny',
+        'not null' => TRUE,
+        'default' => 0,
         'description' => t("Mailman 'user invite' option"),
       ),
       'user_notify' => array(
-        'type' => 'int', 
-        'size' => 'tiny', 
-        'not null' => TRUE, 
-        'default' => 0, 
+        'type' => 'int',
+        'size' => 'tiny',
+        'not null' => TRUE,
+        'default' => 0,
         'description' => t("Mailman 'user notify' option"),
       ),
       'user_admin_notify' => array(
-        'type' => 'int', 
-        'size' => 'tiny', 
-        'not null' => TRUE, 
-        'default' => 0, 
+        'type' => 'int',
+        'size' => 'tiny',
+        'not null' => TRUE,
+        'default' => 0,
         'description' => t("Mailman 'admin notify' option"),
       ),
       'allow_unsubscribe' => array(
-        'type' => 'int', 
-        'size' => 'tiny', 
-        'not null' => TRUE, 
-        'default' => 1, 
+        'type' => 'int',
+        'size' => 'tiny',
+        'not null' => TRUE,
+        'default' => 1,
         'description' => t("Allow/deny user list unsubscription"),
       ),
       'allow_temp_disable' => array(
-        'type' => 'int', 
-        'size' => 'tiny', 
-        'not null' => TRUE, 
-        'default' => 1, 
+        'type' => 'int',
+        'size' => 'tiny',
+        'not null' => TRUE,
+        'default' => 1,
         'description' => t("Allow/deny list temporary receiving disable"),
       ),
       'allow_digest' => array(
-        'type' => 'int', 
-        'size' => 'tiny', 
-        'not null' => TRUE, 
-        'default' => 1, 
+        'type' => 'int',
+        'size' => 'tiny',
+        'not null' => TRUE,
+        'default' => 1,
         'description' => t("Allow/deny list digest subscription"),
       ),
       'description' => array(
-        'type' => 'text', 
-        'size' => 'medium', 
-        'not null' => TRUE, 
-//        'default' => '',  // 'text' can't have a default value
+        'type' => 'text',
+        'size' => 'medium',
+        'not null' => TRUE,
         'description' => t("List description"),
       ),
       'defaultnewreg' => array(
-        'type' => 'int', 
-        'not null' => TRUE, 
-        'default' => 0, 
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
         'description' => t("Default choice in user registration form"),
       ),
       'role_sync' => array(
-        'type' => 'int', 
-        'not null' => TRUE, 
-        'default' => 1, 
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 1,
         'description' => t("Enable/disable subscription synchronization"),
       ),
     ),
@@ -161,29 +162,29 @@ function user_mailman_register_schema() {
       ),
       'lmail' => array(
         'type' => 'varchar',
-        'length' => 36,
+        'length' => 255,
         'not null' => TRUE,
         'default' => '',
         'description' => t('Current user subscribed email.'),
       ),
       'lpass' => array(
         'type' => 'varchar',
-        'length' => 36,
+        'length' => 255,
         'not null' => TRUE,
         'default' => '',
         'description' => t('Current user list password.'),
       ),
       // User Mailman Register fields
       'lchecktime' => array(
-        'type' => 'int', 
-        'not null' => TRUE, 
-        'default' => 0, 
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
         'description' => t("Last Mailman subscription check time"),
       ),
       'lmod' => array(
-        'type' => 'int', 
-        'not null' => TRUE, 
-        'default' => 0, 
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
         'description' => t("Moderation flag"),
       ),
     ),
@@ -236,4 +237,51 @@ function user_mailman_register_update_7000(&$sandbox) {
     ))
     ->condition('permission', 'administer mailman_manager')
     ->execute();
+}
+
+
+/**
+ * Expand all varchar fields to 255 bytes.
+ */
+function user_mailman_register_update_7001(&$sandbox) {
+  db_query("ALTER TABLE {mailman_lists} MODIFY COLUMN `name` varchar(255) NOT NULL DEFAULT '' COMMENT 'Mailing List name'");
+  db_query("ALTER TABLE {mailman_lists} MODIFY COLUMN `command` varchar(255) NOT NULL DEFAULT '' COMMENT 'Mailing List \'request\' address'");
+  db_query("ALTER TABLE {mailman_lists} MODIFY COLUMN `admin` varchar(255) DEFAULT '' COMMENT 'Mailing List \'admin\' address'");
+  db_query("ALTER TABLE {mailman_lists} MODIFY COLUMN `web` varchar(255) DEFAULT '' COMMENT 'Mailing list web address for users.'");
+  db_query("ALTER TABLE {mailman_lists} MODIFY COLUMN `webarch` varchar(255) DEFAULT '' COMMENT 'Mailing list web archive address for users'");
+  db_query("ALTER TABLE {mailman_lists} MODIFY COLUMN `webadmin` varchar(255) DEFAULT '' COMMENT 'Mailman web url'");
+  db_query("ALTER TABLE {mailman_lists} MODIFY COLUMN `webpass` varchar(255) DEFAULT '' COMMENT 'Mailman admin password'");
+  db_query("ALTER TABLE {mailman_users} MODIFY COLUMN `lmail` varchar(255) NOT NULL DEFAULT '' COMMENT 'Current user subscribed email.'");
+  db_query("ALTER TABLE {mailman_users} MODIFY COLUMN `lpass` varchar(255) NOT NULL DEFAULT '' COMMENT 'Current user list password.'");
+  drupal_set_message(t('Updated varchar fields in mailman_lists and mailman_users to varchar(255).'));
+}
+
+
+/**
+ * Conditionally add fields that may be missing from older installs.
+ */
+function user_mailman_register_update_7002(&$sandbox) {
+  $table = 'mailman_users';
+  $fields = array(
+    'lchecktime' => array(
+      'type' => 'int',
+      'not null' => TRUE,
+      'default' => 0,
+      'description' => t("Last Mailman subscription check time"),
+    ),
+    'lmod' => array(
+      'type' => 'int',
+      'not null' => TRUE,
+      'default' => 0,
+      'description' => t("Moderation flag"),
+    ),
+  );
+  foreach ($fields as $field => $spec) {
+    // On sites installed in Drupal 7 prior to this update, the field
+    // will already exist.
+    if (!db_field_exists($table, $field)) {
+      // Add a new field.
+      db_add_field($table, $field, $spec);
+    }
+  }
 }

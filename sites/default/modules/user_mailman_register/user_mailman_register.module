@@ -356,7 +356,7 @@ function user_mailman_register_mail($key, &$message, $params) {
  */
 function user_mailman_register_form_user_register_form_alter(&$form, &$form_state, $form_id) {
   if (variable_get('user_mailman_register_registerform', FALSE)) {
-    require_once(drupal_get_path('module', 'user_mailman_register') . '/user_mailman_register.pages.inc');
+    form_load_include($form_state, 'inc', 'user_mailman_register', 'user_mailman_register.pages');
     $form = user_mailman_register_form($form, $form_state, NULL, FALSE);
     $form['user_mailman_register']['#weight'] = $form['account']['#weight'] + 0.5;
     $form['#validate'][] = 'user_mailman_register_form_validate';
@@ -373,7 +373,7 @@ function user_mailman_register_form_user_register_form_alter(&$form, &$form_stat
 function user_mailman_register_form_user_profile_form_alter(&$form, &$form_state, $form_id) {
   global $user;
   if (!variable_get('user_mailman_register_ownform', FALSE) && isset($form['account']) && _user_mailman_register_access($user)) {
-    require_once(drupal_get_path('module', 'user_mailman_register') . '/user_mailman_register.pages.inc');
+    form_load_include($form_state, 'inc', 'user_mailman_register', 'user_mailman_register.pages');
     // Note: the account we're editing isn't necessarily $user, get it from form
     $form = user_mailman_register_form($form, $form_state, $form['#user'], FALSE);
     $form['user_mailman_register']['#weight'] = $form['account']['#weight'] + 0.5;
@@ -736,7 +736,7 @@ function _user_mailman_register_save_status($list, $user_status, $uid, $mail) {
  * or, if there's no email address, return USER_MAILMAN_REGISTER_UNSUBSCRIBED (is this a programming error?)
  */
 function _user_mailman_register_get_remote_status($account, $list, $user_mail = FALSE) {
-  if (!$account->mail && !$user_mail) {
+  if (!isset($account->mail) && !$user_mail) {
     return USER_MAILMAN_REGISTER_UNSUBSCRIBED;
   }
   if (!$user_mail) {
@@ -776,7 +776,7 @@ function _user_mailman_register_get_remote_status($account, $list, $user_mail = 
         if (preg_match('/INPUT .*name="' . $str_email . '_mod".* value="on"/i', $httpreq->data)) {
           $subscription['lmod'] = 1;
         }
-        if (preg_match('/INPUT .*name="' . $str_email . '_nomail".* value="on" CHECKED >(\[\w\])/i', $httpreq->data, $match)) {
+        if (preg_match('/INPUT .*name="' . $str_email . '_nomail".* value="on" CHECKED >(\[.*\])/i', $httpreq->data, $match)) {
           $subscription['lstatus'] = USER_MAILMAN_REGISTER_SUBSCRIBED_DISABLED;
           if ($match[1] != t("[A]")) {
             $subscription['lmessage'] = t("Delivery for %name was disabled by the system probably due to excessive bouncing from the member's address", array('%name' => $list['name']));

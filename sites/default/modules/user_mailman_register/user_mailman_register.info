@@ -1,8 +1,10 @@
-name = User Mailman Register 
+name = User Mailman Register
 description = "This is a module for managing Mailman list subscriptions from within Drupal."
 package = Mailman
 core = 7.x
 version = 7.x-3.0
+configure = admin/structure/user_mailman_register
+
 files[] = user_mailman_register.module
 files[] = user_mailman_register.admin.inc
 files[] = user_mailman_register.pages.inc
@@ -17,11 +19,9 @@ files[] = views/user_mailman_register_handler_filter_listname.inc
 files[] = views/user_mailman_register_handler_filter_subscription_status.inc
 files[] = views/user_mailman_register_handler_filter_sync_status.inc
 
-config=admin/structure/user_mailman_register
-
-; Information added by drupal.org packaging script on 2013-10-20
-version = "7.x-3.0"
+; Information added by Drupal.org packaging script on 2015-06-28
+version = "7.x-3.2"
 core = "7.x"
 project = "user_mailman_register"
-datestamp = "1382305784"
+datestamp = "1435528683"
 

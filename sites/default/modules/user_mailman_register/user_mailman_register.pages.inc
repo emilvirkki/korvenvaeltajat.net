@@ -41,7 +41,12 @@ function user_mailman_register_page() {
 function user_mailman_register_form($form, &$form_state, $account = NULL, $show_submit = TRUE) {
   if ($show_submit) {
     if (isset($account)) {
-      drupal_set_title(t('Mailing Lists for %name', array('%name' => $account->name)), PASS_THROUGH);
+      if ($account->uid > 0) {
+        drupal_set_title(t('Mailing Lists for %name', array('%name' => $account->name)), PASS_THROUGH);
+      }
+      else {
+        drupal_set_title(t('Mailing Lists'), PASS_THROUGH);
+      }
     }
   }
   $form['user_mailman_register']['lists'] = array(
@@ -136,7 +141,7 @@ function user_mailman_register_form($form, &$form_state, $account = NULL, $show_
 
   if (!$lists_available) {
     $form['user_mailman_register']['lists']['#description'] = t('No mailing lists are available.');
-    $form['user_mailman_register']['lists']['#attributes'] = array('class' => 'umr_list_nolists');
+    $form['user_mailman_register']['lists']['#attributes']['class'] = 'umr_list_nolists';
   }
   elseif ($show_submit) {
     if (!$account || $account->uid === 0) {

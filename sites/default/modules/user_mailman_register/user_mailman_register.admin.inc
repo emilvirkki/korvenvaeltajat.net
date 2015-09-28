@@ -67,6 +67,7 @@ function user_mailman_register_adminlist_form() {
     '#rows' => $rows,
     '#empty' => t('There are no mailing lists configured.'),
   );
+  $form['mailing_lists_pager'] = array('#theme' => 'pager');
   $form['num_lists'] = array(
     '#type' => 'hidden',
     '#value' => $count_query->execute()->fetchField(),
@@ -300,7 +301,8 @@ function user_mailman_register_adminedit_form($form, &$form_state, $lid = NULL) 
   $form['mailman_admin']['webpass'] = array(
     '#title' => t('Admin web password'),
     '#description' => t('Mailman administrator web password.'),
-    '#type' => 'password_confirm',
+    '#type' => 'textfield',
+    '#default_value' => $list->webpass,
     '#size' => 15,
   );
   $form['mailman_admin']['version'] = array(
@@ -415,10 +417,6 @@ function user_mailman_register_adminedit_form_validate($form, &$form_state) {
  * Submission function for edit form for an individual mailing list
  */
 function user_mailman_register_adminedit_form_submit($form, &$form_state) {
-  $webpass = $form_state['values']['mailman_admin']['webpass'];
-  if (empty($webpass)) {
-    $webpass = $form_state['values']['list']->webpass;
-  }
   $list = (object) array(
     'lid' => $form_state['values']['list']->lid,
     'name' => $form_state['values']['mailman_admin']['name'],
@@ -427,7 +425,7 @@ function user_mailman_register_adminedit_form_submit($form, &$form_state) {
     'web' => $form_state['values']['mailman_admin']['web'],
     'webarch' => $form_state['values']['mailman_admin']['webarch'],
     'webadmin' => $form_state['values']['mailman_admin']['webadmin'],
-    'webpass' => $webpass,
+    'webpass' => $form_state['values']['mailman_admin']['webpass'],
     'version' => $form_state['values']['mailman_admin']['version'],
     'user_invite' => $form_state['values']['mailman_admin']['user_invite'],
     'user_notify' => $form_state['values']['mailman_admin']['user_notify'],
