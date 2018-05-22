@@ -59,23 +59,15 @@ function lpk_menu() {
     'access arguments' => array('access leader section'),
     'description' => 'Johtajasivujen etusivu.',
   );
-  $items['johtajat/tiedostot'] = array(
-    'title' => 'Tiedostot',
-    'page callback' => 'lpk_files_page',
-    //'delivery callback' => 'ajax_deliver',
-    'access callback' => 'user_access',
-    'access arguments' => array('access leader section'),
-    'description' => 'Tiedostojen hallinta.',
-  );
   return $items;
-  
+
 }
 
 
 /**
 * Implements hook_theme(). Registers the theme_lpk_toolbar theme function
 */
-function lpk_theme($existing, $type, $theme, $path) { 
+function lpk_theme($existing, $type, $theme, $path) {
   return array(
     'lpk_toolbar' => array()
   );
@@ -86,10 +78,10 @@ function lpk_theme($existing, $type, $theme, $path) {
  * and adds the ability to generate passwords automatically.
  */
 function lpk_form_alter(&$form, &$form_state, $form_id) {
-  
+
   //Reorder fields and hide useless fields in the user forms
   if($form_id == 'user_profile_form' || $form_id == 'user_register_form') {
-  
+
     //Field descriptions
     $form['account']['name']['#description'] = 'Muotoa etunini.sukunimi';
 
@@ -98,7 +90,7 @@ function lpk_form_alter(&$form, &$form_state, $form_id) {
     $form['account']['field_phone'] = $form['field_phone'];
     unset($form['field_fullname']);
     unset($form['field_phone']);
-    
+
     //Reorder fields to username, name, email, phone
     $form['account']['name']['#weight'] = -3;
     $form['account']['field_fullname']['#weight'] = -2;
@@ -107,28 +99,28 @@ function lpk_form_alter(&$form, &$form_state, $form_id) {
 
     //Hide the useless locale selector
     $form['locale']['#access'] = FALSE;
-    
+
   }
-  
+
   //Generate random password and hide the password fields for new users
   if($form_id == 'user_register_form') {
-    
+
     //Generate a default password
     $form['account']['pass']['#type'] = 'value';
     $form['account']['pass']['#value'] = user_password(20);
-    
+
     //Always notify user of account
     $form['account']['notify']['#type'] = 'value';
     $form['account']['notify']['#value'] = 1;
-    
+
   }
-  
+
   //Hide useless instruction on the login page
   if($form_id == 'user_login') {
     $form['pass']['#description'] = NULL;
     $form['#submit'][] = '_lpk_redirect_user';
   }
-  
+
   //Make sure the search block displays the label
   if($form_id == 'search_block_form') {
     //Un-hide the label and set a more descriptive text
@@ -141,7 +133,7 @@ function lpk_form_alter(&$form, &$form_state, $form_id) {
 /**
  * Implements hook_mail().
  */
-function lpk_mail($key, &$message, $params) { 
+function lpk_mail($key, &$message, $params) {
   $message['subject'] = $params['subject'];
   $message['body']    = array($params['body']);
   if($params['headers']) {
@@ -164,9 +156,9 @@ function lpk_mail($key, &$message, $params) {
  */
 function lpk_leader_page() {
   global $user;
-  
+
   $content = array();
-  
+
   /* //SINGLE ITEM
   $content[] = array(
     '#title' => '',
@@ -180,7 +172,7 @@ function lpk_leader_page() {
     ),
   );
   */
-  
+
   $content[] = array(
     '#title' => 'Uutiset',
     '#class' => 'news',
@@ -198,20 +190,7 @@ function lpk_leader_page() {
       ),
     ),
   );
-  
-  $content[] = array(
-    '#title' => 'Joukkosähköposti',
-    '#class' => 'news',
-    '#description' => 'Lähetä sähköpostia joukolle sivuston käyttäjiä.',
-    '#links' => array(
-      array(
-        '#title' => 'Sähköposti kaikille johtajille',
-        '#path' => 'johtajat/sahkoposti',
-        '#access' => 'send emails',
-      ),
-    ),
-  );
-  
+
   $content[] = array(
     '#title' => 'Tapahtumakalenteri',
     '#class' => 'events',
@@ -229,7 +208,7 @@ function lpk_leader_page() {
       ),
     ),
   );
-  
+
   $content[] = array(
     '#title' => 'Blogi',
     '#class' => 'blog',
@@ -247,25 +226,7 @@ function lpk_leader_page() {
       ),
     ),
   );
-  
-  $content[] = array(
-    '#title' => 'Kuvagalleria',
-    '#class' => 'gallery',
-    '#description' => 'Luo kuvagallerioita ja lisää kuvia.',
-    '#links' => array(
-      array(
-        '#title' => 'Uusi galleria',
-        '#path' => 'johtajat/galleria/uusi',
-        '#access' => 'create new galleries'
-      ),
-      array(
-        '#title' => 'Kaikki galleriat',
-        '#path' => 'johtajat/galleria',
-        '#access' => 'access gallery admin page'
-      ),
-    ),
-  );
-  
+
   $content['groups'] = array(
     '#title' => 'Ryhmät',
     '#class' => 'groups',
@@ -278,7 +239,7 @@ function lpk_leader_page() {
       ),
     ),
   );
-  
+
   //Add user's own groups
   $group_ids = lpk_get_user_nids($user->uid, 'group');
   foreach($group_ids as $group_id) {
@@ -288,20 +249,20 @@ function lpk_leader_page() {
       '#access' => 'edit own group content'
     );
   }
-  
+
   //Add all groups list
   $content['groups']['#links'][] = array(
     '#title' => 'Kaikki ryhmät',
     '#path' => 'johtajat/ryhmat',
     '#access' => 'create group content',
   );
-  
+
   //If the user doesn't have any own groups and has no right to add a group,
   //remove the item
   if(count($group_ids) == 0 && !user_access('create group content')) {
     unset($content['groups']);
   }
-  
+
   $content[] = array(
     '#title' => 'Kämpän varaukset',
     '#class' => 'bookings',
@@ -319,33 +280,7 @@ function lpk_leader_page() {
       ),
     ),
   );
-  
-  $content[] = array(
-    '#title' => 'Tiedostot',
-    '#class' => 'leader-files',
-    '#description' => '',
-    '#links' => array(
-      array(
-        '#title' => 'Tiedostojen hallinta',
-        '#path' => 'johtajat/tiedostot',
-        '#access' => 'access leader section',
-      ),
-    ),
-  );
-  
-  $content[] = array(
-    '#title' => 'Johtajien yhteystiedot',
-    '#class' => 'leader-contacts',
-    '#description' => 'Johtajien sähköpostiosoitteet ja yhteystiedot.',
-    '#links' => array(
-      array(
-        '#title' => 'Johtajien yhteystiedot',
-        '#path' => 'johtajat/johtajien-yhteystiedot',
-        '#access' => 'access user profiles',
-      ),
-    ),
-  );
-  
+
   $content[] = array(
     '#title' => 'Hallitse sisältöä',
     '#class' => 'manage-content',
@@ -363,7 +298,7 @@ function lpk_leader_page() {
       ),
     ),
   );
-  
+
   $content[] = array(
     '#title' => 'Käyttäjät',
     '#class' => 'users',
@@ -381,7 +316,7 @@ function lpk_leader_page() {
       ),
     ),
   );
-  
+
   $content[] = array(
     '#title' => 'Loki',
     '#class' => 'log',
@@ -394,7 +329,7 @@ function lpk_leader_page() {
       ),
     ),
   );
-  
+
   $content[] = array(
     '#title' => 'Oma käyttäjätili',
     '#class' => 'my-account',
@@ -407,15 +342,8 @@ function lpk_leader_page() {
       ),
     ),
   );
-  
-  return _lpk_render_page($content);
-}
 
-/**
- * Simply displays the IMCE file manager
- */
-function lpk_files_page() {
-  return '<iframe src="/imce" class="imce"></iframe>';
+  return _lpk_render_page($content);
 }
 
 
@@ -440,7 +368,7 @@ function lpk_files_page() {
  */
 function lpk_add_action($button = NULL) {
   static $buttons = array();
-  
+
   if($button != NULL) {
     $buttons[] = $button;
   } else {
@@ -499,49 +427,49 @@ function lpk_get_user_fullname($uid, $default = FALSE) {
 
 function lpk_get_user_mail($uid) {
   $user = user_load($uid);
-  
+
   if(!$user->mail) {
     return FALSE;
   }
-  
+
   $fullname = lpk_get_user_fullname($uid);
   if($fullname) {
     return "$fullname <{$user->mail}>";
   }
-  
+
   return $user->mail;
 }
 
 function lpk_format_timespan($start,$end,$year=true,$month=true) {
 	//Form: 27.12.2007 - 4.1.2008
 	$out = date("j.n.Y",$start)." - ".date("j.n.Y",$end);
-	
+
 	if(date("Y",$start) == date("Y",$end)) {
 		//Form: 27.11 - 3.12.2007
 		$out = date("j.n.",$start)." - ".date("j.n.Y",$end);
-		
+
 		if(date("n",$start) == date("n",$end)) {
 			//Form: 15.-17.8.2007
 			$out = date("j.",$start)." - ".date("j.n.Y",$end);
-			
+
 			if(date("j",$start) == date("j",$end)) {
 				//Form: 15.8.2007
 				$out = date("j.n.Y",$start);
 			}
 		}
 	}
-	
+
 	//Poistetaan vuosi ja kuukausi jos tarpeen
-	
+
 	if((!$year || !$month) && (date("Y",$start) == date("Y",$end))) {
 		//Vuosi sama ja halutaan poistoon
 		$out = substr($out,0,strlen($out) - 5);
 		if(!$month && (date("n",$start) == date("n",$end))) {
 			//Kuukausi sama ja halutaan poistoon
-			$out = substr($out,0,strlen($out) - strlen(date("n",$start)));		
+			$out = substr($out,0,strlen($out) - strlen(date("n",$start)));
 		}
 	}
-	
+
 	return $out;
 }
 
@@ -582,7 +510,7 @@ function lpk_get_user_nids($uid, $nodetype = NULL) {
   if($nodetype != NULL) {
     $select->condition('type', $nodetype);
   }
-  
+
   return $select->execute()->fetchCol();
 }
 
@@ -650,24 +578,24 @@ function theme_lpk_toolbar($args) {
   $output = '';
   if(count($buttons) > 0) {
     $output .= '<ul class="actionbuttons">';
-    
+
     //Add each button as classed list item as link
     foreach($buttons as $button) {
-      
+
       //Make sure classes can be used in the class attribute directly
       if(isset($button['#classes']) && is_array($button['#classes'])) {
         $button['#classes'] = implode(' ', $button['#classes']);
       }
-      
+
       $class_str = '';
       if(isset($button['#classes'])) {
         $class_str =  ' class="' . $button['#classes'] . '"';
       }
-      
+
       //Add actual link item
       $output .= '<li' . $class_str . '><a href="' . $button['#path'] . '">' . $button['#title'] . '</a></li>';
     }
-    
+
     $output .= '</ul>';
   }
   return $output;
@@ -717,7 +645,7 @@ function _lpk_redirect_user($form, &$form_state) {
 function _lpk_render_page($content) {
 
   $str = '<ul id="lpk-leader-page">';
-  
+
   foreach($content as $item) {
     //Check that we have access rights for at least one of the links
     foreach($item['#links'] as $link) {
@@ -727,21 +655,21 @@ function _lpk_render_page($content) {
       }
     }
   }
-  
+
   $str .= '</ul>';
 
   return $str;
 }
-  
+
 function _lpk_render_page_item($item) {
   $str = '<li class="' . check_plain($item['#class']) . "\">\n";
-  
+
   $str .= '<h2>' . check_plain($item['#title']) . "</h2>\n";
-  
+
   if(!empty($item['#description'])) {
     $str .= '<p>' . check_plain($item['#description']) . "</p>\n";
   }
-  
+
   if(count($item['#links'])) {
     $str .= '<ul class="links">';
     foreach($item['#links'] as $link) {
@@ -751,9 +679,9 @@ function _lpk_render_page_item($item) {
     }
     $str .= "</ul>\n";
   }
-  
+
   $str .= "</li>\n";
-  
+
   return $str;
 }
 
@@ -768,14 +696,14 @@ function _lpk_render_page_item($item) {
 class Mail {
   private $from = NULL;
   private $headers = array();
-  
+
   private $subject;
   private $body;
-  
+
   private $recipientRoles = array();
   private $recipientUsers = array();
   private $recipientAddresses = array();
-  
+
   function __construct() {
   }
 
@@ -783,23 +711,23 @@ class Mail {
     $this->recipientRoles[] = $rid;
     return $this;
   }
-  
+
   function addUserRecipient($uid) {
     $this->recipientUsers[] = $uid;
     return $this;
   }
-  
+
   function addAddressRecipient($address) {
     if(!in_array($address, $this->recipientAddresses)) {
       $this->recipientAddresses[] = $address;
     }
     return $this;
   }
-  
+
   function setHeader($key, $value) {
     $this->headers[$key] = $value;
   }
-  
+
   function setFrom($from) {
     $this->from = $from;
     return $this;
@@ -809,57 +737,57 @@ class Mail {
     $this->subject = $subject;
     return $this;
   }
-  
+
   function setBody($body) {
     $this->body = $body;
     return $this;
   }
-  
+
   function send() {
-    
+
     //Resolve roles and users to emails
     $this->resolve();
-    
+
     //Send errors to site email by default
     $this->setHeader('Errors-To', variable_get('site_mail', ini_get('sendmail_from')));
-    
+
     $params = array(
       'subject' => $this->subject,
       'body' => $this->body,
       'headers' => $this->headers
     );
-    
+
     $msg = drupal_mail('lpk', 'default', implode(', ',$this->recipientAddresses),
                             language_default(), $params, $this->from, TRUE);
-    
+
     watchdog('Outgoing mail', 'Mail sent<br/><pre>' . check_plain(var_export($msg, TRUE)) . '</pre>');
-    
+
     //Confirm that sending succeeded
     return $msg['result'];
   }
-  
+
   private function resolve() {
     $this->resolveRoleRecipients();
     $this->resolveUserRecipients();
   }
-  
+
   private function resolveRoleRecipients() {
     foreach ($this->recipientRoles as $rid) {
-      $this->resolveUserRecipients(lpk_get_users_in_role($rid));      
+      $this->resolveUserRecipients(lpk_get_users_in_role($rid));
     }
     $this->recipientRoles = array();
-    
+
   }
-  
+
   private function resolveUserRecipients($uids = NULL) {
     if ($uids == NULL) {
       $uids = $this->recipientUsers;
       $this->recipientUsers = array();
     }
-    
+
     //Users are statically cached so it's ok to go through them like this
     $users = user_load_multiple($uids);
-    
+
     foreach($users as $user) {
       $address = lpk_get_user_mail($user->uid);
       $this->addAddressRecipient($address);
